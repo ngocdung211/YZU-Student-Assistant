@@ -214,7 +214,7 @@ MCP capability exposure and specialist scheduling are separate design responsibi
 
 ## Implementation checkpoints
 
-See `IMPLEMENTATION_PLAN.md` for ten sequential implementation steps and their verification criteria. The user requires an explicit review and confirmation after each step. Step 1 is implemented and verified, awaiting user review; no later step has started. Secret values belong in untracked local configuration; committed examples contain placeholders only. The plan uses local Python/Node processes initially; the earlier `compose.yaml` sketch is optional and is not an initial deliverable.
+See `IMPLEMENTATION_PLAN.md` for ten sequential implementation steps and their verification criteria. The user requires an explicit review and confirmation after each step. Step 1 is approved. Step 2 configuration is in progress; live verification and Drive setup remain pending. Secret values belong in untracked local configuration; committed examples contain placeholders only. The plan uses local Python/Node processes initially; the earlier `compose.yaml` sketch is optional and is not an initial deliverable.
 
 ## First milestone sequence
 
@@ -222,7 +222,7 @@ The user selected Steps 1 → 2 → 3 → 4 → 7 → 8 → 9 to reach a working
 
 ## Implemented Step 1 — corrected to reuse the HaUI style
 
-The user rejected the newly designed landing page and required reuse of the previous project's actual code/style. That landing-page design has been removed. This is still Step 1, awaiting review; no later implementation step is authorized.
+The user rejected the newly designed landing page and required reuse of the previous project's actual code/style. That landing-page design has been removed. The user has now approved this Step 1 interface and authorized Step 2.
 
 | New file/function | Source and purpose |
 | --- | --- |
@@ -244,8 +244,37 @@ Pinned core versions remain Next.js 16.3.5, React 19.3.0, TypeScript 5.9.3, Fast
 
 Verification after the correction: production build and TypeScript check passed; desktop at 1440px and mobile at 390px reviewed visually; no horizontal overflow at 390px; FAQ selection fills the composer; mobile drawer opens and closes after selection; original light/dark control works; no captured browser console warnings/errors. Original theme/styles/assets were compared byte-for-byte with their source copies. Backend behavior was not changed.
 
-The earlier plain-CSS landing-page design and its proposed deferral of Chakra are superseded by this correction. Only the interface shell is ready, not chat functionality. `README.md` retains local startup instructions. User review is required before proceeding to Step 2.
+The earlier plain-CSS landing-page design and its proposed deferral of Chakra are superseded by this correction. Only the interface shell is ready, not chat functionality. `README.md` retains local startup instructions. The user subsequently approved Step 1 and authorized Step 2.
 
 ## User-supplied YZU logo
 
 The user supplied and requested the YZU logo. `Chat()` now uses `frontend/public/img/logo/yzu-logo.png` for the assistant avatar and decorative background; `SidebarContent()` uses the same asset for the sidebar/mobile drawer. The source image is copied without pixel changes. Contained sizing preserves the circular seal: 80px sidebar logo, existing 40px avatar, and a 400px background limited by the viewport. This resolves the previously pending logo choice and supersedes the temporary HaUI-logo notes above. The HaUI-derived colors and layout remain.
+
+## Step 2 implementation in progress
+
+The application boundaries remain frontend presentation, backend HTTP API, application services/model integration, and storage adapters. No agent graph, new AI role, MCP server, or specialist agent was added. The two model roles remain chat and embeddings, both selected in backend configuration.
+
+| File/function | Responsibility and reuse |
+| --- | --- |
+| `app/config.py:load_settings()` | Consolidates HaUI dotenv configuration into one backend file, preserves environment overrides, and reports names without values |
+| `app/models.py:create_models()` | Adapts HaUI `ChatOpenAI` and `OpenAIEmbeddings`; removes stdout callbacks and import-time configuration loading |
+| `app/models.py:check_models()` | Short startup chat/embedding checks; output is discarded |
+| `app/storage/neo4j.py:create_driver()` | Reuses HaUI async Neo4j approach, with no fallback password |
+| `app/storage/neo4j.py:check_database()` | Checks connectivity and selected-database read access using `RETURN 1` |
+| `app/connections.py:lifespan()` | Owns HTTP transports/driver, performs startup checks, retains successful clients on app state, closes resources even after partial failure |
+| `app/api/health.py:get_readiness()` | HTTP 503 until all startup checks pass; safe cached status, no repeated model requests |
+| `frontend/lib/api.ts` | Public API address for later chat integration; no secrets or interface changes |
+
+Backend runtime dependencies added: LangChain OpenAI 1.6.2, Neo4j 6.3.0, python-dotenv 1.2.3, and HTTPX 0.28.1; pytest 9.1.1 is a development dependency. `uv.lock` pins the resolved dependency graph. Clients are created during lifespan, not module import. Startup checks are snapshots, not continuous monitoring, and each configured startup uses a small amount of OpenAI API quota.
+
+Drive integration is deliberately pending the user's authentication choice. Service accounts cannot own files and require Shared Drive storage or user delegation; see the [official Google Drive guide](https://developers.google.com/workspace/drive/api/guides/about-shareddrives). Folder access alone will not establish that public reference creation works. Actual public-link verification remains required before Step 2 completion.
+
+OpenAI configuration was checked against [OpenAI Docs](https://developers.openai.com/api/docs/quickstart) and the [embedding guide](https://developers.openai.com/api/docs/guides/embeddings); reused client APIs were checked against [LangChain ChatOpenAI documentation](https://docs.langchain.com/oss/python/integrations/chat/openai). Six offline tests pass. No real external credentials have been verified. Work stays local on `codex/step-2-configuration`; the user controls publishing.
+
+## Step 2 provider and OAuth update
+
+This section supersedes the earlier pending authentication choice and `OPENAI_*` configuration notes. The user selected personal Google Drive via OAuth and Gemini's OpenAI-compatible endpoint. `create_models()` passes the required `GEMINI_BASE_URL` and `GEMINI_API_KEY` to both LangChain clients. Chat uses `GEMINI_CHAT_MODEL_1`; embeddings use `GEMINI_EMBEDDING_MODEL` and raw text, avoiding OpenAI token IDs. `GEMINI_CHAT_MODEL_2` is unused. No extra model role was introduced.
+
+`storage/drive.py:authorize()` provides explicit local browser consent with the user's approved full Drive scope for the existing folder. `create_service()` loads/refreshes the ignored OAuth token; `check_folder()` checks destination type and upload capability. `check_public_reference()` creates a dedicated test file, shares it, verifies anonymous content access, then deletes it in `finally`. Startup never launches consent or creates public probe files. `lifespan()` owns and closes the Google API client alongside the Neo4j and model transports. `/ready` reports connection readiness; the explicit CLI probe separately establishes public-reference support.
+
+Google Drive OAuth dependencies are pinned in `pyproject.toml` and `uv.lock`. The supplied OAuth credential is a Web client; the Google Cloud console must register `http://localhost:8080/`. A token has not yet been verified. Live Gemini chat, Gemini embeddings and Neo4j checks passed; 13 offline tests passed. User consent and the real Drive public-reference check remain required before completing Step 2. Setup and commands are documented in `README.md`.

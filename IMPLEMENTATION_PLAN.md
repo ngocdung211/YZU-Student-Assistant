@@ -8,7 +8,7 @@
 
 **Tech stack:** Next.js, React, TypeScript, Chakra UI, FastAPI, Python, LangGraph, Neo4j, OpenAI model integration, Google Drive, Docling and HTML parsing. Validate compatible versions during Step 1 rather than copying the legacy dependency list unchanged.
 
-**Status:** User selected the first milestone order: 1 → 2 → 3 → 4 → 7 → 8 → 9. Step 1 is implemented and verified, awaiting user review. Step 2 and later steps are not authorized. The user has now explicitly authorized coding Step 1; this document remains the review checklist.
+**Status:** Step 1 approved by the user. Step 2 is authorized and in progress on the local `codex/step-2-configuration` branch. Gemini/Neo4j live checks pass. Personal Drive OAuth is implemented with the user-approved full Drive scope; user consent and a real public-reference check remain pending. Thirteen offline tests pass. Later steps are not authorized. No remote changes or pushes.
 
 ## Location and boundaries
 
@@ -45,7 +45,7 @@ For every numbered step:
 5. Present what changed, why, test results, how the user can check it, and any remaining limitations.
 6. Mark the step as awaiting review and stop. The next step requires an explicit user confirmation; silence, tool permission, or an unrelated reply is not confirmation.
 
-If the user requests changes, revise the current step and present it again. Confirming the overall plan does not authorize executing all steps. Do not start application code in this session unless the user explicitly changes the documentation-only scope.
+If the user requests changes, revise the current step and present it again. Confirming the overall plan does not authorize executing all steps. The user has authorized coding through the current step only.
 
 ## File responsibilities
 
@@ -111,12 +111,12 @@ Four logical layers: presentation, API/access, application workflows, and storag
 
 **Files:** `backend/.env.example`, `backend/app/config.py`, `backend/app/models.py`, `backend/app/storage/neo4j.py`, `backend/app/storage/drive.py`, `backend/app/api/health.py`, `backend/tests/test_config.py`, `frontend/.env.example`, `frontend/lib/api.ts`.
 
-- [ ] Establish one set of names for model settings, Neo4j URI/user/password, Drive credentials/folder, administrator credentials, and authentication secret. Examples contain placeholders only.
+- [x] Establish one set of names for model settings, Neo4j URI/user/password, Drive credentials/folder, administrator credentials, and authentication secret. Examples contain placeholders only.
 - [ ] Let the user populate the untracked backend `.env` and credential file. Frontend environment values contain only public routing information.
-- [ ] Initialize clients during application lifecycle, not imports. Make missing configuration errors identify variable names without disclosing values.
+- [x] Initialize clients during application lifecycle, not imports. Make missing configuration errors identify variable names without disclosing values.
 - [ ] Verify Neo4j connectivity and access to the selected Drive folder; verify the configured chat and embedding models with small, clearly identified connection checks once credentials are supplied.
 - [ ] Confirm that the user's Drive setup permits public reference links. If it cannot, stop this step and report the specific setup issue.
-- [ ] Test missing-setting validation and cleanup of connections. Keep liveness distinct from dependency readiness; do not return secret-bearing exception text to browsers.
+- [x] Test missing-setting validation and cleanup of connections. Keep liveness distinct from dependency readiness; do not return secret-bearing exception text to browsers.
 
 **User review:** Inspect variable names and the connection-status report. Secret values are never displayed. **STOP for confirmation.**
 
