@@ -1,0 +1,19 @@
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+option {
+  color: black;
+}
+
+/* Typing cursor animation for streaming messages */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.typing-cursor {
+  animation: blink 1s infinite;
+  color: #805ad5;
+  font-weight: bold;
+}

@@ -1,0 +1,35 @@
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+credentials/
+secrets/
+*credentials*.json
+*service-account*.json
+token.json
+*.pem
+*.key
+
+# Dependencies and generated output
+.venv/
+venv/
+node_modules/
+.next/
+out/
+dist/
+build/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+*.log
+.DS_Store
+
+# Local document content
+uploads/
+data/
