@@ -8,7 +8,7 @@
 
 **Tech stack:** Next.js, React, TypeScript, Chakra UI, FastAPI, Python, LangGraph, Neo4j, OpenAI model integration, Google Drive, Docling and HTML parsing. Validate compatible versions during Step 1 rather than copying the legacy dependency list unchanged.
 
-**Status:** Steps 1–4 and Step 7 are implemented and accepted by the user, including the cross-page sentence correction. The user authorized Step 8's six-node LangGraph workflow. Step 8 implementation is ready for user-run verification; it is not yet accepted. All work remains local.
+**Status:** Steps 1–4 and Step 7 are implemented and accepted by the user, including the cross-page sentence correction. The user replaced Step 8's earlier six-node design with a three-node LangGraph plus bounded fallback tools. The revision is implemented and being verified; Step 8 is not yet accepted. All work remains local.
 
 ## Location and boundaries
 
@@ -85,7 +85,7 @@ YZU Student Assistant/
     │   ├── ingestion/             # pdf.py, html.py, chunking.py
     │   └── storage/               # neo4j.py, drive.py, documents.py, sessions.py
     ├── tests/
-    ├── pyproject.toml
+    ├── requirements.txt
     └── .env.example
 ```
 
@@ -93,7 +93,7 @@ Four logical layers: presentation, API/access, application workflows, and storag
 
 ## Step 1 — Project skeleton and local startup
 
-**Files:** `.gitignore`, `README.md`, `backend/pyproject.toml`, `backend/app/main.py`, `backend/app/api/health.py`, `frontend/package.json`, `frontend/app/layout.tsx`, `frontend/app/page.tsx`, and necessary framework configuration/lockfiles.
+**Files:** `.gitignore`, `README.md`, `backend/requirements.txt`, `backend/app/main.py`, `backend/app/api/health.py`, `frontend/package.json`, `frontend/app/layout.tsx`, `frontend/app/page.tsx`, and necessary framework configuration/lockfiles.
 
 - [x] Inspect installed Python/Node runtimes and select compatible, pinned dependency versions using official documentation at execution time.
 - [x] Create the frontend/backend skeleton and minimal health response. Reuse the original HaUI chat layout and Chakra theme; no new landing-page design.
@@ -184,20 +184,22 @@ Four logical layers: presentation, API/access, application workflows, and storag
 
 **Files:** `backend/app/services/chat.py`, `backend/app/storage/sessions.py`, `backend/app/schemas.py`, `backend/tests/test_chat_workflow.py`.
 
-**Status:** Implemented; awaiting user verification and acceptance. See `docs/STEP_8_PLAN.md` and `docs/STEP_8_VERIFICATION.md`. The graph uses understand → retrieve → evaluate → reason → answer, with an interrupting clarify → retrieve branch. Neo4j stores checkpoints and conversation turns across restarts. The local reset operation deletes the selected session's records; frontend reset wiring follows in Step 9.
+**Status:** Completed and accepted by the user on 2026-09-15. See `docs/STEP_8_PLAN.md` and `docs/STEP_8_VERIFICATION.md`. The graph uses rewrite_query → retrieve → answer. When document retrieval is empty, the answer node may use official-YZU web search and a maintained Global Affairs contact. Neo4j stores checkpoints and conversation turns across restarts. The local reset operation deletes the selected session's records; frontend reset wiring follows in Step 9.
 
-- [x] Adapt the enhanced graph into the approved six-node workflow. Remove book/contact tools, generated Cypher, agent comparison, and autonomous retry loops.
+- [x] Replace the enhanced graph with the approved three-node workflow. Keep generated Cypher, agent comparison, and autonomous retry loops removed.
 - [x] For a conversational follow-up, use bounded recent history to form a standalone retrieval question with the same chat model. This is query preparation, not a specialist agent or a new model role.
-- [x] Generate English answers from retrieved evidence. Preserve policy qualifications and dates, acknowledge gaps, and avoid claiming a course list is complete without evidence.
+- [x] Generate English answers from retrieved evidence. After empty document retrieval only, try one Gemini grounded search restricted to official YZU sites and a relevant maintained Global Affairs contact.
 - [x] Use source IDs for citations and resolve links from stored retrieval metadata. Treat document text as evidence, never as instructions authorizing actions.
 - [x] Persist conversation turns and LangGraph checkpoints in Neo4j, isolate sessions, and delete one session on reset. Do not inherit the original ten-question limit.
-- [ ] User verifies answer support, valid citation IDs, absent information, pause/resume clarification, context-dependent follow-ups, restart persistence, reset, and session isolation using `docs/STEP_8_VERIFICATION.md`.
+- [x] User accepts the locally verified Step 8 behavior and authorizes Step 9.
 
 **User review:** Inspect full answers and follow-ups against the cited sources. Confirm session behavior. **STOP for confirmation.**
 
 ## Step 9 — Student chat, Markdown, and SSE
 
 **Files:** `backend/app/api/chat.py`, `frontend/app/page.tsx`, `frontend/components/chat/ChatPanel.tsx`, `frontend/components/chat/MarkdownMessage.tsx`, `frontend/components/chat/References.tsx`, `frontend/hooks/useChatSession.ts`, `frontend/lib/chat.ts`, `frontend/tests/chat_stream.test.ts`, `backend/tests/test_chat_stream.py`.
+
+**Status:** Implementation in progress. The approved contract uses an HttpOnly signed anonymous-session cookie, event-level SSE over `fetch`, Neo4j transcript restoration, and explicit session deletion/rotation for “New conversation.”
 
 - [ ] Adapt the chat page, Markdown rendering, and `streamMessage()` into one event contract: start, answer content, references, completion, or error.
 - [ ] Map the chosen LangGraph execution/streaming API to SSE and handle events split across network chunks. Do not label whole-message updates as token streaming.
@@ -226,6 +228,6 @@ After version-one acceptance, discuss MCP client/server boundaries and the reque
 
 ## Step 7 discussion decisions and prerequisite correction
 
-The completed Step 7 provides two independent semantic/keyword search functions, RRF result fusion, reranking with `GEMINI_CHAT_MODEL_2`, and fallback to merged rank if reranking fails or returns invalid data. Up to one previous/next chunk may supplement each selected result, with deduplication and a bounded context budget. Query understanding and evidence evaluation belong to the Step 8 graph.
+The completed Step 7 provides two independent semantic/keyword search functions, RRF result fusion, reranking with `GEMINI_CHAT_MODEL_2`, and fallback to merged rank if reranking fails or returns invalid data. Up to one previous/next chunk may supplement each selected result, with deduplication and a bounded context budget. Conversational query rewriting and grounded answer generation belong to the Step 8 graph.
 
 The prerequisite ingestion fix removes forced page boundaries and records all source pages in `page_numbers`, with `page_number` as the first page. The real scholarship sample was re-embedded and repaired under its existing document ID and Drive reference. The user accepted Step 7 and moved the project to Step 8.

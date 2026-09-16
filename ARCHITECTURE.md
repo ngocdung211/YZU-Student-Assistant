@@ -173,7 +173,7 @@ YZU Student Assistant/
     │   ├── ingestion/             # pdf.py, html.py, chunking.py
     │   └── storage/               # neo4j.py, documents.py, drive.py, sessions.py
     ├── tests/
-    ├── pyproject.toml
+    ├── requirements.txt
     └── .env.example
 ```
 
@@ -265,7 +265,7 @@ The application boundaries remain frontend presentation, backend HTTP API, appli
 | `app/api/health.py:get_readiness()` | HTTP 503 until all startup checks pass; safe cached status, no repeated model requests |
 | `frontend/lib/api.ts` | Public API address for later chat integration; no secrets or interface changes |
 
-Backend runtime dependencies added: LangChain OpenAI 1.6.2, Neo4j 6.3.0, python-dotenv 1.2.3, and HTTPX 0.28.1; pytest 9.1.1 is a development dependency. `uv.lock` pins the resolved dependency graph. Clients are created during lifespan, not module import. Startup checks are snapshots, not continuous monitoring, and each configured startup uses a small amount of OpenAI API quota.
+Backend dependencies added: LangChain OpenAI 1.6.2, Neo4j 6.3.0, python-dotenv 1.2.3, HTTPX 0.28.1, and pytest 9.1.1. The single `requirements.txt` pins the direct application and test dependencies. Clients are created during lifespan, not module import. Startup checks are snapshots, not continuous monitoring, and each configured startup uses a small amount of OpenAI API quota.
 
 Drive integration is deliberately pending the user's authentication choice. Service accounts cannot own files and require Shared Drive storage or user delegation; see the [official Google Drive guide](https://developers.google.com/workspace/drive/api/guides/about-shareddrives). Folder access alone will not establish that public reference creation works. Actual public-link verification remains required before Step 2 completion.
 
@@ -277,7 +277,7 @@ This section supersedes the earlier pending authentication choice and `OPENAI_*`
 
 `storage/drive.py:authorize()` provides explicit local browser consent with the user's approved full Drive scope for the existing folder. `create_service()` loads/refreshes the ignored OAuth token; `check_folder()` checks destination type and upload capability. `check_public_reference()` creates a dedicated test file, shares it, verifies anonymous content access, then deletes it in `finally`. Startup never launches consent or creates public probe files. `lifespan()` owns and closes the Google API client alongside the Neo4j and model transports. `/ready` reports connection readiness; the explicit CLI probe separately establishes public-reference support.
 
-Google Drive OAuth dependencies are pinned in `pyproject.toml` and `uv.lock`. The supplied OAuth credential is a Web client; the Google Cloud console must register `http://localhost:8080/`. A token has not yet been verified. Live Gemini chat, Gemini embeddings and Neo4j checks passed; 13 offline tests passed. User consent and the real Drive public-reference check remain required before completing Step 2. Setup and commands are documented in `README.md`.
+Google Drive OAuth dependencies are pinned in `requirements.txt`. The supplied OAuth credential is a Web client; the Google Cloud console must register `http://localhost:8080/`. A token has not yet been verified. Live Gemini chat, Gemini embeddings and Neo4j checks passed; 13 offline tests passed. User consent and the real Drive public-reference check remain required before completing Step 2. Setup and commands are documented in `README.md`.
 
 ## Step 2 verification checkpoint
 
@@ -351,14 +351,16 @@ Step 7 is complete and accepted by the user. `storage/search.py` owns parameteri
 
 Authenticated FastAPI inspection routes are available at `POST /admin/search/semantic`, `/admin/search/keyword`, and `/admin/search`. Search results are evidence candidates, not answer-confidence judgments; evidence sufficiency, conversational query preparation, and grounded answer generation remain Step 8 responsibilities. Safe Step 7 live-search artifacts are retained under ignored `backend/data/step7/`. The user performs future verification runs from commands supplied by the assistant.
 
-## Step 8 — Implemented six-node LangGraph workflow
+## Step 8 — Simplified three-node LangGraph agent
 
-The user authorized understand → retrieve → evaluate → reason → answer, with missing evidence routed to clarify → retrieve. `services/chat.py:ChatService` compiles this graph with `Neo4jSaver`. Clarification uses LangGraph `interrupt()` and `Command(resume=...)`, so retrieval resumes only after the student replies. One clarification per question is the initial bound; if evidence remains insufficient, reason/answer return a limitation. Action requests are reported as deferred.
+The user replaced the earlier design with START → rewrite_query → retrieve → answer → END. `services/chat.py:ChatService` compiles this graph with `Neo4jSaver`. There is no evidence-evaluation, policy-reasoning, clarification, interrupt, or autonomous retry node. Action requests are still reported as deferred.
 
-`understand_request()` reads bounded recent completed history and prepares a standalone query. `retrieve_documents()` reuses Step 7. `evaluate_evidence()` checks support; `reason_policy()` produces concise conclusions with conditions and source IDs; `generate_answer()` validates IDs, builds references from stored source metadata, and saves the turn idempotently. ID validation establishes provenance, not factual entailment. Language tasks use existing Gemini model 1; embeddings and reranking retain their Step 7 roles.
+`rewrite_query()` reads bounded recent completed history and prepares a standalone query only for contextual follow-ups. `retrieve_documents()` reuses Step 7. `generate_answer()` validates source IDs, builds references from application-owned metadata, and saves the completed turn idempotently. Document evidence always takes priority. Only when document retrieval is empty may the answer node call `get_web_search` and `get_office_contact` from `services/fallback_tools.py`.
 
-`storage/checkpoints.py` implements asynchronous checkpoint lookup, listing, snapshot writes, pending writes, and thread deletion. Neo4j stores typed serialized snapshots under unique keys. `storage/sessions.py` stores completed turns as `YZUChatSession -[:HAS_TURN]-> YZUChatTurn`, assigns a monotonically increasing per-session sequence, and retrieves the newest six exchanges within 12,000 characters. Snapshots include intermediate passages and concise conclusions; snapshots and turns persist until session reset. `ChatService.reset()` removes only the selected session's turn/checkpoint nodes and returns a new UUID.
+Web fallback sends at most one billable Gemini native Google Search grounding request and keeps at most five cited HTTPS results from YZU domains. The contact tool returns the maintained Office of Global Affairs record only for relevant scholarship, admission, exchange, or contact intents. Either tool may fail without aborting the other; if neither returns evidence, the answer explicitly reports insufficient information. These are ordinary services inside the answer node, not MCP tools or specialist agents. ID validation establishes provenance, not factual entailment. Language tasks and web grounding use existing Gemini model 1; embeddings and reranking retain their Step 7 roles.
 
-`connections.py:lifespan()` creates the checkpoint constraints and chat service using managed clients. LangGraph 1.2.11 is pinned. `app.chat_cli` gives the user a local interface for questions, clarification, retry, and disposable-session reset. Local session locks assume one process; Step 9 must enforce browser ownership before exposing session access.
+`storage/checkpoints.py` implements asynchronous checkpoint lookup, listing, snapshot writes, pending writes, and thread deletion. Neo4j stores typed serialized snapshots under unique keys. `storage/sessions.py` stores completed turns as `YZUChatSession -[:HAS_TURN]-> YZUChatTurn`, assigns a monotonically increasing per-session sequence, and retrieves the newest six exchanges within 12,000 characters. A session-existence query avoids first-use warnings for nonexistent turn properties and relationships. Checkpoint thread IDs carry a graph-version prefix, preventing unfinished snapshots from the superseded graph from resuming while completed conversation history remains available. Snapshots and turns persist until session reset. `ChatService.reset()` removes only the selected session's turn/checkpoint nodes and returns a new UUID.
 
-Status: implementation ready for user review. Tests and live workflow verification have not been run by the assistant. Follow `docs/STEP_8_VERIFICATION.md`; frontend/SSE integration remains Step 9.
+`connections.py:lifespan()` creates the checkpoint constraints, fallback tools, and chat service using managed clients. LangGraph 1.2.11 is pinned. `app.chat_cli` gives the user a local interface for questions, retry, and disposable-session reset. Local session locks assume one process; Step 9 must enforce browser ownership before exposing session access.
+
+Status: the revised implementation passed 18 focused tests and 66 broader backend tests excluding an unrelated stale PDF-ingestion import. Live document-first answering, contextual follow-up, and session reset passed. Gemini returned HTTP 429 during the live web-fallback probe; the graph correctly returned an evidence limitation. The user accepted Step 8 on 2026-09-15 and authorized frontend/SSE integration in Step 9.

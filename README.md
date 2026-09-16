@@ -5,7 +5,7 @@ An English information assistant for YZU students. **Steps 1 and 2 are approved;
 ## Requirements
 
 - Node.js 20.9+ and npm (verified locally with Node 20.17.0 and npm 10.8.2).
-- Python 3.13 and uv (verified locally with Python 3.13.5 and uv 0.11.13).
+- Python 3.13 and pip (verified locally with Python 3.13.5).
 - No API keys, `.env`, database, or Google Drive credentials are required for Step 1.
 
 ## Install
@@ -14,7 +14,9 @@ Backend:
 
 ```sh
 cd "/Users/admin/Working/2026-S2/YZU Student Assistant/backend"
-uv sync --frozen
+python3.13 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
 Frontend:
@@ -24,7 +26,7 @@ cd "/Users/admin/Working/2026-S2/YZU Student Assistant/frontend"
 npm ci
 ```
 
-Keep `uv.lock` and `package-lock.json` in version control for reproducible installs.
+Keep `requirements.txt` and `package-lock.json` in version control for reproducible installs.
 
 ## Run locally
 
@@ -106,7 +108,7 @@ http://localhost:8080/
 From `backend/`, run:
 
 ```sh
-uv run python -m app.storage.drive --authorize --check-public
+.venv/bin/python -m app.storage.drive --authorize --check-public
 ```
 
 Complete Google consent in the browser within three minutes. Authorization is explicit and never opens automatically on API startup. Tokens are stored in the ignored token file with owner-only permissions. Subsequent checks refresh expired access tokens when possible. Do not commit the OAuth JSON or token file.
@@ -114,7 +116,7 @@ Complete Google consent in the browser within three minutes. Authorization is ex
 The command checks destination-folder access, creates `yzu-connection-check.txt`, grants public reader access, reads its exact contents without OAuth, and deletes only that newly created probe. No existing documents are changed. A failed command prints only a safe status or exception class. Retry `--authorize` after correcting OAuth configuration or revoked/expired refresh tokens. Once authorized, repeat the probe without another login using:
 
 ```sh
-uv run python -m app.storage.drive --check-public
+.venv/bin/python -m app.storage.drive --check-public
 ```
 
 ### Startup and verification
@@ -130,7 +132,7 @@ Restart the backend after configuration changes or completing OAuth. Every start
 Run offline tests from `backend/`:
 
 ```sh
-uv run python -m pytest -q
+.venv/bin/python -m pytest -q
 ```
 
 Current result: 13 passing tests, including Gemini request routing/raw embedding text, missing settings, error redaction, lifecycle cleanup, private token permissions, folder validation, and probe cleanup. One Starlette/AnyIO dependency deprecation warning remains. Real Neo4j, Gemini chat, and Gemini embeddings checks passed. Google OAuth and a real public-link probe passed; the temporary probe was deleted. Step 2 is verified and awaiting user approval. Step 3 has not started. All changes remain local; the user manages publishing.
@@ -145,7 +147,7 @@ Your `ADMIN_USERNAME` is read from `backend/.env`. Configure a password without 
 
 ```sh
 cd "/Users/admin/Working/2026-S2/YZU Student Assistant/backend"
-uv run python -m app.auth --set-password
+.venv/bin/python -m app.auth --set-password
 ```
 
 Enter and confirm a password of 12–1024 characters. The helper saves an Argon2 hash in `ADMIN_PASSWORD_HASH`. If `AUTH_SECRET` is empty or shorter than 32 characters, this explicit command replaces it with a random signing secret. Neither value is printed. The `.env` file is kept owner-readable/writable. Process environment overrides still apply; remove stale overrides if a changed file is not taking effect.
@@ -172,7 +174,7 @@ Browser verification: the HaUI-derived form fits desktop and 390px mobile widths
 
 The user has confirmed Step 3 authentication is complete. PDF import now reuses HaUI's Docling/Markdown pipeline, followed by explicit Gemini embeddings, public Drive upload, and atomic Neo4j storage. The frontend design is unchanged. Retrieval and chat are the next approved-order steps, not yet implemented.
 
-From `backend/`, install the updated locked dependencies with `uv sync`, then start or restart the API using the existing startup command. Docling downloads its local PDF/OCR model files on first conversion; that first run can take several minutes. Subsequent conversions use cached assets. PDF import is synchronous and the request waits for the result; this version has no progress UI or durable background job queue.
+From `backend/`, install the updated dependencies with `.venv/bin/python -m pip install -r requirements.txt`, then start or restart the API using the existing startup command. Docling downloads its local PDF/OCR model files on first conversion; that first run can take several minutes. Subsequent conversions use cached assets. PDF import is synchronous and the request waits for the result; this version has no progress UI or durable background job queue.
 
 ### Inspect the imported scholarship sample
 
@@ -202,8 +204,8 @@ The existing scholarship sample was re-embedded and its chunks replaced atomical
 
 Step 7 is complete and accepted. Authenticated inspection endpoints expose independent semantic and keyword searches plus combined RRF fusion, optional `GEMINI_CHAT_MODEL_2` reranking with safe fallback, and bounded neighboring context. Safe live-search evidence is retained under ignored `backend/data/step7/`.
 
-## Step 8 — LangGraph workflow ready for user verification
+## Step 8 — Simplified LangGraph agent
 
-The six-node workflow and persistent Neo4j checkpoints/history are implemented. From `backend/`, run `.venv/bin/python -m app.chat_cli` to start a disposable local conversation. Restart with `--session YOUR_SESSION_UUID` to continue it, including a pending clarification. `/retry` resumes failed work; `/reset` permanently deletes that session's history/checkpoints; `/quit` exits.
+The workflow is `rewrite_query → retrieve → answer`, with persistent Neo4j checkpoints/history. Document retrieval is always attempted first. If it returns no passages, the answer node may try a billable Gemini search restricted to official YZU sites and a maintained Global Affairs contact. From `backend/`, run `.venv/bin/python -m app.chat_cli` to start a disposable local conversation. Restart with `--session YOUR_SESSION_UUID` to continue it. `/retry` resumes failed work; `/reset` permanently deletes that session's history/checkpoints; `/quit` exits.
 
-Follow [Step 8 verification](docs/STEP_8_VERIFICATION.md) for exact offline and live checks. No Step 8 test results are claimed yet. Public browser chat, session ownership controls, and SSE follow in Step 9.
+Follow [Step 8 verification](docs/STEP_8_VERIFICATION.md) for exact offline and live checks. Public browser chat, session ownership controls, and SSE follow in Step 9.
