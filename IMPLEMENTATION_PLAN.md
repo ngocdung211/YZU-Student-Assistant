@@ -8,7 +8,7 @@
 
 **Tech stack:** Next.js, React, TypeScript, Chakra UI, FastAPI, Python, LangGraph, Neo4j, OpenAI model integration, Google Drive, Docling and HTML parsing. Validate compatible versions during Step 1 rather than copying the legacy dependency list unchanged.
 
-**Status:** Step 1 approved by the user. Step 2 is authorized and in progress on the local `codex/step-2-configuration` branch. Gemini/Neo4j live checks pass. Personal Drive OAuth is implemented with the user-approved full Drive scope; user consent and a real public-reference check remain pending. Thirteen offline tests pass. Later steps are not authorized. No remote changes or pushes.
+**Status:** Steps 1–4 and Step 7 are implemented and accepted by the user, including the cross-page sentence correction. The user authorized Step 8's six-node LangGraph workflow. Step 8 implementation is ready for user-run verification; it is not yet accepted. All work remains local.
 
 ## Location and boundaries
 
@@ -32,7 +32,7 @@ During this milestone, the administrator uploads PDFs through the authenticated 
 
 **After the user tries and accepts PDF chat:** return to Step 5 (manual HTML ingestion), Step 6 (document administration and content lifecycle), then Step 10 (broader verification and handover). Each still needs its own review checkpoint.
 
-Focused tests remain part of every step. Step 9 must include a working end-to-end PDF upload → indexing → retrieval → streamed answer → public reference demonstration before the first milestone is reported ready. Full Step 10 is deferred, not all verification.
+Focused verification remains part of every step. The assistant provides exact commands and expected results, and the user runs the checks and reports the outcome. Step 9 must include a working end-to-end PDF upload → indexing → retrieval → streamed answer → public reference demonstration before the first milestone is reported ready. Full Step 10 is deferred, not all verification.
 
 ## How each checkpoint works
 
@@ -40,7 +40,7 @@ For every numbered step:
 
 1. Announce the scope and the functions/files affected.
 2. Implement only that step, adapting selected source code where useful.
-3. Run focused checks; fix failures within the same step. Use meaningful automated tests for behavior, not tests that merely repeat trivial code.
+3. Provide focused check commands and expected results for the user to run. Use meaningful automated tests for behavior, not tests that merely repeat trivial code; fix reported failures within the same step.
 4. Update `ARCHITECTURE.md` and the run instructions where behavior has changed.
 5. Present what changed, why, test results, how the user can check it, and any remaining limitations.
 6. Mark the step as awaiting review and stop. The next step requires an explicit user confirmation; silence, tool permission, or an unrelated reply is not confirmation.
@@ -112,36 +112,38 @@ Four logical layers: presentation, API/access, application workflows, and storag
 **Files:** `backend/.env.example`, `backend/app/config.py`, `backend/app/models.py`, `backend/app/storage/neo4j.py`, `backend/app/storage/drive.py`, `backend/app/api/health.py`, `backend/tests/test_config.py`, `frontend/.env.example`, `frontend/lib/api.ts`.
 
 - [x] Establish one set of names for model settings, Neo4j URI/user/password, Drive credentials/folder, administrator credentials, and authentication secret. Examples contain placeholders only.
-- [ ] Let the user populate the untracked backend `.env` and credential file. Frontend environment values contain only public routing information.
+- [x] Let the user populate the untracked backend `.env` and credential file. Frontend environment values contain only public routing information.
 - [x] Initialize clients during application lifecycle, not imports. Make missing configuration errors identify variable names without disclosing values.
-- [ ] Verify Neo4j connectivity and access to the selected Drive folder; verify the configured chat and embedding models with small, clearly identified connection checks once credentials are supplied.
-- [ ] Confirm that the user's Drive setup permits public reference links. If it cannot, stop this step and report the specific setup issue.
+- [x] Verify Neo4j connectivity and access to the selected Drive folder; verify the configured chat and embedding models with small, clearly identified connection checks once credentials are supplied.
+- [x] Confirm that the user's Drive setup permits public reference links. If it cannot, stop this step and report the specific setup issue.
 - [x] Test missing-setting validation and cleanup of connections. Keep liveness distinct from dependency readiness; do not return secret-bearing exception text to browsers.
 
 **User review:** Inspect variable names and the connection-status report. Secret values are never displayed. **STOP for confirmation.**
 
 ## Step 3 — Administrator login
 
-**Files:** `backend/app/auth.py`, `backend/app/api/auth.py`, `backend/app/schemas.py`, `backend/tests/test_auth.py`, `frontend/app/login/page.tsx`, `frontend/lib/auth.ts`.
+**Files:** `backend/app/auth.py`, `backend/app/api/auth.py`, `backend/app/schemas.py`, `backend/tests/test_auth.py`, `frontend/app/login/page.tsx`, `frontend/lib/auth.ts`. Also add `backend/app/api/admin.py` as the shared guarded router; update application lifespan/CORS registration.
 
-- [ ] Adapt the login UI; implement one configured administrator with verified password handling and session expiration.
-- [ ] Use backend-validated authentication for every document-management action; frontend route protection alone is insufficient.
-- [ ] Provide logout. Keep student chat access public. Replace the legacy hardcoded account and fallback signing secret.
-- [ ] Test valid/invalid login, expiration, logout behavior, and denial of management access without authentication. Set local cookie/CORS behavior consistently for the chosen origins.
+- [x] Adapt the login UI; implement one configured administrator with verified password handling and session expiration.
+- [x] Use backend-validated authentication for every document-management action; frontend route protection alone is insufficient.
+- [x] Provide logout. Keep student chat access public. Replace the legacy hardcoded account and fallback signing secret.
+- [x] Test valid/invalid login, expiration, logout behavior, and denial of management access without authentication. Set local cookie/CORS behavior consistently for the chosen origins.
 
 **User review:** Log in and out and try management access while logged out. **STOP for confirmation.**
 
 ## Step 4 — PDF ingestion and public Google Drive references
 
-**Files:** `backend/app/api/documents.py`, `backend/app/services/ingestion.py`, `backend/app/ingestion/pdf.py`, `backend/app/ingestion/chunking.py`, `backend/app/storage/documents.py`, `backend/app/storage/drive.py`, `backend/app/schemas.py`, `backend/tests/test_pdf_ingestion.py`.
+**Files:** `backend/app/api/documents.py`, `backend/app/services/ingestion.py`, `backend/app/ingestion/pdf.py`, `backend/app/ingestion/chunking.py`, `backend/app/storage/documents.py`, `backend/app/storage/drive.py`, `backend/tests/test_pdf_ingestion.py`.
 
-- [ ] Adapt `create_file()`, Markdown chunking functions, and Drive upload operations into one ingestion service.
-- [ ] Validate PDF input and isolate temporary paths per upload. Preserve headings and actual page information when extraction supports it; do not fabricate page numbers.
-- [ ] Upload the original, grant public read access as required, and store its Drive ID/link with document metadata.
-- [ ] Extract, chunk, embed, and persist source-linked records. Mark content ready only after indexing succeeds; expose actionable import failures and handle partial work explicitly.
-- [ ] Test extraction/source metadata, simultaneous upload isolation, and failure handling using controlled fixtures; run one real PDF import into the project services.
+- [x] Adapt `create_file()`, Markdown chunking functions, and Drive upload operations into one ingestion service.
+- [x] Validate PDF input and isolate temporary paths per upload. Preserve headings and actual page information when extraction supports it; do not fabricate page numbers.
+- [x] Upload the original, grant public read access as required, and store its Drive ID/link with document metadata.
+- [x] Extract, chunk, embed, and persist source-linked records. Mark content ready only after indexing succeeds; expose actionable import failures and handle partial work explicitly.
+- [x] Test extraction/source metadata, simultaneous upload isolation, and failure handling using controlled fixtures; run one real PDF import into the project services.
 
-**User review:** Submit a sample through the API documentation, inspect extracted chunks, and open the Drive link in a signed-out browser. **STOP for confirmation.**
+**Verification:** 49 backend tests pass. The real 4-page PDF produced 11 chunks and 3,072-dimensional embeddings; Neo4j readback and vector-index checks passed. Anonymous Drive download matched the original SHA-256. See `docs/STEP_4_VERIFICATION.md` for extraction limitations and exact results.
+
+**User review:** Inspect the existing sample and its Drive link first. A repeat upload creates another document. Optionally submit another sample through API documentation. **STOP for confirmation.**
 
 ## Step 5 — Manual YZU webpage ingestion
 
@@ -170,24 +172,26 @@ Four logical layers: presentation, API/access, application workflows, and storag
 
 **Files:** `backend/app/services/retrieval.py`, `backend/app/schemas.py`, `backend/app/storage/documents.py`, `backend/tests/test_retrieval.py`.
 
-- [ ] Adapt `get_chunk_retriever()` and hybrid-search configuration, keeping index creation outside module imports.
-- [ ] Define retrieval output as passages with chunk/document IDs, title, source URL, optional real page/section, and retrieval score. Deduplicate repeated passages.
-- [ ] Search only ready, current content. Keep result limits and thresholds configurable instead of blindly copying the original two-result setting.
-- [ ] Prepare expected-evidence questions covering a policy, scholarship, course list, and an absent topic from the user's imported English PDF corpus. Where a topic is absent, verify that absence rather than inventing an expected answer.
-- [ ] Show retrieved passages before involving answer generation. Check relevant evidence, no-match behavior, source metadata, and exclusion of non-ready records. Full replacement/deletion integration checks follow Step 6.
+- [x] Adapt `get_chunk_retriever()` and hybrid-search configuration, keeping index creation outside module imports.
+- [x] Define retrieval output as passages with chunk/document IDs, title, source URL, optional real page/section, and retrieval score. Deduplicate repeated passages.
+- [x] Search only ready, current content. Keep result limits and thresholds configurable instead of blindly copying the original two-result setting.
+- [x] Prepare expected-evidence questions covering a policy, scholarship, course list, and an absent topic from the user's imported English PDF corpus. Where a topic is absent, verify that absence rather than inventing an expected answer.
+- [x] Show retrieved passages before involving answer generation. Check relevant evidence, no-match behavior, source metadata, and exclusion of non-ready records. Full replacement/deletion integration checks follow Step 6.
 
-**User review:** Examine the passages and source links returned for the agreed questions. **STOP for confirmation.**
+**Status:** Completed and accepted by the user on 2026-09-15. Safe search evidence is retained under ignored `backend/data/step7/`. Full replacement/deletion integration checks still follow Step 6.
 
 ## Step 8 — Simplified LangGraph and conversation context
 
 **Files:** `backend/app/services/chat.py`, `backend/app/storage/sessions.py`, `backend/app/schemas.py`, `backend/tests/test_chat_workflow.py`.
 
-- [ ] Adapt the enhanced graph into a controlled retrieval → answer workflow. Remove book/contact tools, generated Cypher, agent comparison, and autonomous retry loops.
-- [ ] For a conversational follow-up, use bounded recent history to form a standalone retrieval question with the same chat model only when needed. This is query preparation, not a specialist agent or a new model role.
-- [ ] Generate English answers from retrieved evidence. Preserve policy qualifications and dates, acknowledge gaps, and avoid claiming a course list is complete without evidence.
-- [ ] Use source IDs for citations and resolve links from stored retrieval metadata. Treat document text as evidence, never as instructions authorizing actions.
-- [ ] Persist conversation turns and isolate sessions. Agree retention and reset behavior before enabling durable history; do not inherit the original ten-question limit automatically.
-- [ ] Test answer support, valid citation IDs, absent information, context-dependent follow-ups, and session isolation using deterministic fixtures plus a small live-model check.
+**Status:** Implemented; awaiting user verification and acceptance. See `docs/STEP_8_PLAN.md` and `docs/STEP_8_VERIFICATION.md`. The graph uses understand → retrieve → evaluate → reason → answer, with an interrupting clarify → retrieve branch. Neo4j stores checkpoints and conversation turns across restarts. The local reset operation deletes the selected session's records; frontend reset wiring follows in Step 9.
+
+- [x] Adapt the enhanced graph into the approved six-node workflow. Remove book/contact tools, generated Cypher, agent comparison, and autonomous retry loops.
+- [x] For a conversational follow-up, use bounded recent history to form a standalone retrieval question with the same chat model. This is query preparation, not a specialist agent or a new model role.
+- [x] Generate English answers from retrieved evidence. Preserve policy qualifications and dates, acknowledge gaps, and avoid claiming a course list is complete without evidence.
+- [x] Use source IDs for citations and resolve links from stored retrieval metadata. Treat document text as evidence, never as instructions authorizing actions.
+- [x] Persist conversation turns and LangGraph checkpoints in Neo4j, isolate sessions, and delete one session on reset. Do not inherit the original ten-question limit.
+- [ ] User verifies answer support, valid citation IDs, absent information, pause/resume clarification, context-dependent follow-ups, restart persistence, reset, and session isolation using `docs/STEP_8_VERIFICATION.md`.
 
 **User review:** Inspect full answers and follow-ups against the cited sources. Confirm session behavior. **STOP for confirmation.**
 
@@ -218,3 +222,10 @@ Four logical layers: presentation, API/access, application workflows, and storag
 ## Later versions — separate plans
 
 After version-one acceptance, discuss MCP client/server boundaries and the requested manager/intent routing → retrieval with bounded retries → evidence reviewer → final manager response. Chinese support and automatic crawling also need separate scope and acceptance decisions. No dates, order between these enhancements, or automatic framework switch is implied.
+
+
+## Step 7 discussion decisions and prerequisite correction
+
+The completed Step 7 provides two independent semantic/keyword search functions, RRF result fusion, reranking with `GEMINI_CHAT_MODEL_2`, and fallback to merged rank if reranking fails or returns invalid data. Up to one previous/next chunk may supplement each selected result, with deduplication and a bounded context budget. Query understanding and evidence evaluation belong to the Step 8 graph.
+
+The prerequisite ingestion fix removes forced page boundaries and records all source pages in `page_numbers`, with `page_number` as the first page. The real scholarship sample was re-embedded and repaired under its existing document ID and Drive reference. The user accepted Step 7 and moved the project to Step 8.

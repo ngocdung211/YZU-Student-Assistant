@@ -1,6 +1,6 @@
 # YZU Student Assistant
 
-An English information assistant for YZU students. **Step 1 is approved; Step 2 connection setup is in progress.** The HaUI-derived interface remains a preview. Gemini and Neo4j live checks pass. Personal Google Drive OAuth is implemented; user consent and public-link verification remain pending. Chat, uploads, and authentication arrive in later approved steps.
+An English information assistant for YZU students. **Steps 1 and 2 are approved; Step 3 administrator login is implemented.** The HaUI-derived interface remains a preview. Gemini and Neo4j live checks pass. Personal Google Drive OAuth and public-link verification passed. Chat and document uploads arrive in later approved steps.
 
 ## Requirements
 
@@ -89,7 +89,7 @@ Keep secrets in ignored `backend/.env`. On a fresh checkout, copy `backend/.env.
 | `GOOGLE_DRIVE_FOLDER_ID` | Existing destination folder |
 | `GOOGLE_DRIVE_CREDENTIALS_JSON` | Path to downloaded OAuth client JSON, absolute or relative to `backend/` |
 | `GOOGLE_DRIVE_TOKEN_FILE` | Optional token path, default `credentials/token.json` |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `AUTH_SECRET` | Reserved for Step 3 |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `AUTH_SECRET` | Administrator login configuration |
 
 `GEMINI_CHAT_MODEL_2` is not used in this step. Older blank `OPENAI_*` variables are ignored; no fallback sends Gemini credentials to OpenAI. `load_settings()` preserves literal dollar signs and gives process environment values precedence. The optional frontend `.env` contains only `NEXT_PUBLIC_API_URL`, default `http://localhost:8000`; the chat preview is not connected yet.
 
@@ -133,4 +133,77 @@ Run offline tests from `backend/`:
 uv run python -m pytest -q
 ```
 
-Current result: 13 passing tests, including Gemini request routing/raw embedding text, missing settings, error redaction, lifecycle cleanup, private token permissions, folder validation, and probe cleanup. One Starlette/AnyIO dependency deprecation warning remains. Real Neo4j, Gemini chat, and Gemini embeddings checks passed. Google OAuth consent and a real public-link probe remain pending; Step 2 is not yet complete. Step 3 has not started. All changes remain local; the user manages publishing.
+Current result: 13 passing tests, including Gemini request routing/raw embedding text, missing settings, error redaction, lifecycle cleanup, private token permissions, folder validation, and probe cleanup. One Starlette/AnyIO dependency deprecation warning remains. Real Neo4j, Gemini chat, and Gemini embeddings checks passed. Google OAuth and a real public-link probe passed; the temporary probe was deleted. Step 2 is verified and awaiting user approval. Step 3 has not started. All changes remain local; the user manages publishing.
+
+Final checkpoint: the running API returned HTTP 200 from `/ready` with Neo4j, Gemini and Drive ready. One earlier Gemini startup check failed; isolated chat/embedding checks and the final startup passed. The import paths in `app/models.py` and `tests/test_drive.py` were corrected to support the documented backend working directory. The OAuth client JSON is outside this repository and untracked; the token is inside the repository, ignored and untracked. No Git exclusion change was needed.
+
+## Step 3 — Administrator login
+
+The HaUI login layout is adapted at <http://localhost:3000/login>. The public student chat preview remains at `/` and requires no login. The successful login view shows the administrator session, an API documentation link, and logout; document-management screens are still deferred.
+
+Your `ADMIN_USERNAME` is read from `backend/.env`. Configure a password without putting it in shell history or chat:
+
+```sh
+cd "/Users/admin/Working/2026-S2/YZU Student Assistant/backend"
+uv run python -m app.auth --set-password
+```
+
+Enter and confirm a password of 12–1024 characters. The helper saves an Argon2 hash in `ADMIN_PASSWORD_HASH`. If `AUTH_SECRET` is empty or shorter than 32 characters, this explicit command replaces it with a random signing secret. Neither value is printed. The `.env` file is kept owner-readable/writable. Process environment overrides still apply; remove stale overrides if a changed file is not taking effect.
+
+Restart the backend after configuration, then open `/login`. Test your credentials, reload the page to confirm the cookie session, click **Log out**, and check that <http://localhost:8000/admin/session> returns HTTP 401. Wrong credentials return HTTP 401; missing or invalid administrator setup returns HTTP 503. Existing `/health` and `/ready` retain their Step 2 meanings; provider readiness is not administrator configuration readiness.
+
+### Local session contract
+
+- `POST /auth/token`: JSON `username`/`password`, returns identity/expiry and sets an HttpOnly, SameSite=Lax cookie. It never returns the token in JSON or stores it in browser localStorage.
+- `GET /admin/session`: protected identity/expiry check; HTTP 401 without a valid session.
+- `POST /auth/logout`: revokes the current session and deletes the cookie; copied cookies from that session are rejected afterward.
+- Mutating authentication/management requests require `X-CSRF-Protection: 1`. Browser origins are restricted to the approved local frontend/API addresses. The frontend supplies the header automatically. FastAPI `/docs` exposes this header for testing: enter `1` when executing login/logout or future management actions.
+- Sessions expire after one hour. Active session IDs live in the single backend process; restart/reload logs every administrator session out. The signed JWT follows HaUI's approach with explicit server-side revocation added for logout.
+- `app/api/admin.py:router` applies `require_admin()` at router level. Future document-management routes must use this guard; client-side checks do not grant access. PDF upload and inspection now use this same guard (see Step 4 below).
+
+Use the same hostname for frontend/API (`localhost` for both, or configure `127.0.0.1` for both). Cookies intentionally have `Secure=False` for this HTTP localhost milestone. Multi-worker or public HTTPS deployment requires a shared session store and reviewed cookie/origin configuration; it is outside this local step.
+
+Verification: 28 backend tests pass, including login, invalid credentials, expiration, token tampering, logout replay, protected management mutations, missing configuration, and CSRF/CORS behavior. Production frontend build and TypeScript checks pass. The login form retains HaUI's spacing, input/password toggle, blue submit button and back button. User password setup and live browser login/logout remain the final review check. No remote repository actions were performed.
+
+Browser verification: the HaUI-derived form fits desktop and 390px mobile widths; password visibility and the missing-setup message work. The back link opens public chat without login. The hung local frontend process was restarted. Live administrator login/logout awaits the user choosing a local password.
+
+
+## Step 4 — PDF import (ready for review)
+
+The user has confirmed Step 3 authentication is complete. PDF import now reuses HaUI's Docling/Markdown pipeline, followed by explicit Gemini embeddings, public Drive upload, and atomic Neo4j storage. The frontend design is unchanged. Retrieval and chat are the next approved-order steps, not yet implemented.
+
+From `backend/`, install the updated locked dependencies with `uv sync`, then start or restart the API using the existing startup command. Docling downloads its local PDF/OCR model files on first conversion; that first run can take several minutes. Subsequent conversions use cached assets. PDF import is synchronous and the request waits for the result; this version has no progress UI or durable background job queue.
+
+### Inspect the imported scholarship sample
+
+1. Log in yourself at <http://localhost:3000/login>. Use the same `localhost` hostname for the API. A backend restart clears the previous session.
+2. Open <http://localhost:8000/docs> and expand `GET /admin/documents/{document_id}`.
+3. Choose **Try it out**, enter `7289437e-be9a-49b8-82df-110fa9439676`, and execute. Expect HTTP 200 with document metadata and 11 chunks, including actual pages 1–4, heading metadata, and embedding dimensions. Vector arrays are intentionally omitted.
+4. Open the returned `source_url` in a private/signed-out browser. It should display the complete original PDF.
+
+The sample is already stored; you do not need to upload it again. Local readback is saved in `backend/data/step4/stored-chunks.json` (ignored by Git). See `docs/STEP_4_VERIFICATION.md` for the full check and known extraction limitations.
+
+### Upload a PDF yourself
+
+In `/docs`, expand `POST /admin/documents`, choose **Try it out**, set `x-csrf-protection` to `1`, choose a PDF, and execute. Your existing administrator cookie is sent by the browser; do not paste credentials into code. Expect HTTP 201 with `status: ready`, `document_id`, `page_count`, `chunk_count`, and `source_url`. Use the returned ID with the inspection endpoint.
+
+Uploads accept `.pdf` files up to 20 MiB and 100 pages. Each upload uses a separate temporary directory and is processed one at a time in the local API process. Long Markdown sections use a 2,500-character limit and up to 500-character overlap within a heading section, including across physical pages. Each chunk stores `page_numbers` for all contributing pages and keeps `page_number` as the first page; heading recognition is only as accurate as Docling's output. The configured `GEMINI_EMBEDDING_MODEL` is called through `GEMINI_BASE_URL`. Each import uses embedding quota and Drive storage. Uploading the same PDF again creates a new document and Drive file; replacement/deduplication is deferred.
+
+Failures return a safe stage and message: invalid/unreadable PDF (422), file too large (413), unavailable clients (503), or embedding/Drive/Neo4j failure (502). Unauthenticated access is 401; a missing CSRF header is 403. A failed import attempts to remove only its own new records and Drive file. If `cleanup_required` is true, inspect the matching ignored `backend/data/failed-imports/<document_id>.json` before retrying. It records IDs and the failed stage, not credentials. An uncertain Drive upload can be located using its `yzu_document_id` app property. There is no automated recovery UI yet.
+
+Verification: **49 backend tests passed**; the supplied 4-page PDF was imported using the real configured services. Eleven 3,072-dimensional vectors were read back, the Neo4j index is ONLINE, a self-vector lookup matched the source, and an anonymous download matched the original SHA-256. One Starlette/AnyIO dependency deprecation warning remains. All work is local; no push was performed. Stop for Step 4 review before Step 7.
+
+
+### Cross-page sentence correction
+
+The chunker no longer flushes at every physical page break. It joins plain-text continuations, preserves explicit heading/list boundaries, and prefers paragraph/sentence boundaries before falling back to smaller splits under the 2,500-character cap. Source character spans map each chunk to `page_numbers`; `page_number` remains its first page for compatibility. An oversized sentence may still need splitting to respect the size limit.
+
+The existing scholarship sample was re-embedded and its chunks replaced atomically under the same document ID and Drive URL. The complete sentence “The review standard may be increased by colleges based on the nature of the field.” is now present in a chunk attributed to pages `[2, 3]`. The sample still has 11 chunks. See `backend/data/step4/stored-chunks.json` for current readback. This correction does not repair Docling's separate heading/reading-order limitations.
+
+Step 7 is complete and accepted. Authenticated inspection endpoints expose independent semantic and keyword searches plus combined RRF fusion, optional `GEMINI_CHAT_MODEL_2` reranking with safe fallback, and bounded neighboring context. Safe live-search evidence is retained under ignored `backend/data/step7/`.
+
+## Step 8 — LangGraph workflow ready for user verification
+
+The six-node workflow and persistent Neo4j checkpoints/history are implemented. From `backend/`, run `.venv/bin/python -m app.chat_cli` to start a disposable local conversation. Restart with `--session YOUR_SESSION_UUID` to continue it, including a pending clarification. `/retry` resumes failed work; `/reset` permanently deletes that session's history/checkpoints; `/quit` exits.
+
+Follow [Step 8 verification](docs/STEP_8_VERIFICATION.md) for exact offline and live checks. No Step 8 test results are claimed yet. Public browser chat, session ownership controls, and SSE follow in Step 9.

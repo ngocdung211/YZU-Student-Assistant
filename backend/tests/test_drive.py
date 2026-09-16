@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from backend.app.config import Settings
-from backend.app.models import create_models
-from backend.app.storage import drive
+from app.config import Settings
+from app.models import create_models
+from app.storage import drive
 
 
 def test_gemini_request_uses_configured_endpoint_and_raw_embedding_text():

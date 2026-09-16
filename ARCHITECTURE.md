@@ -278,3 +278,87 @@ This section supersedes the earlier pending authentication choice and `OPENAI_*`
 `storage/drive.py:authorize()` provides explicit local browser consent with the user's approved full Drive scope for the existing folder. `create_service()` loads/refreshes the ignored OAuth token; `check_folder()` checks destination type and upload capability. `check_public_reference()` creates a dedicated test file, shares it, verifies anonymous content access, then deletes it in `finally`. Startup never launches consent or creates public probe files. `lifespan()` owns and closes the Google API client alongside the Neo4j and model transports. `/ready` reports connection readiness; the explicit CLI probe separately establishes public-reference support.
 
 Google Drive OAuth dependencies are pinned in `pyproject.toml` and `uv.lock`. The supplied OAuth credential is a Web client; the Google Cloud console must register `http://localhost:8080/`. A token has not yet been verified. Live Gemini chat, Gemini embeddings and Neo4j checks passed; 13 offline tests passed. User consent and the real Drive public-reference check remain required before completing Step 2. Setup and commands are documented in `README.md`.
+
+## Step 2 verification checkpoint
+
+This checkpoint supersedes the earlier pending OAuth notes. Personal Drive authorization, writable folder access, and anonymous reading of a newly created public probe passed; the probe was deleted. The restarted local API returned HTTP 200 from `/ready` with all three dependencies ready. One initial Gemini check failed transiently; subsequent individual model checks and startup passed. Thirteen offline tests pass. Corrected package imports in `app/models.py` and `tests/test_drive.py` match the documented backend startup directory. OAuth client credentials are outside the repository; the local token is ignored and untracked. Step 2 awaits user approval; Step 3 has not started.
+
+## Step 3 — Administrator authentication
+
+Steps 1 and 2 are approved. This step adds no AI model role or application layer. The HaUI login UI, password verification, signed JWT, and HttpOnly cookie approach are reused. Backend validation and revocable sessions replace the source's hardcoded account, fallback secret, and browser localStorage token handling.
+
+| File/function | Responsibility |
+| --- | --- |
+| `app/auth.py:AdminAuth.login()` | Verify the configured Argon2 password hash; issue a signed one-hour session |
+| `app/auth.py:AdminAuth.validate()` | Check JWT signature, subject, required claims, expiry, and active session ID |
+| `app/auth.py:require_admin()` | Backend dependency used by the entire admin router |
+| `app/auth.py:protect_mutation()` | Require an explicit CSRF header and reject foreign browser origins |
+| `app/auth.py:configure_password()` | Hidden local password prompt; save only hash and create a signing secret if needed |
+| `app/api/auth.py:login()` / `logout()` | Set HttpOnly cookie; revoke session and delete cookie |
+| `app/api/admin.py:get_session()` | Verify administrator access for the login page; future management routes use this guarded router |
+| `app/schemas.py` | Login credentials and safe identity/expiry response |
+| `frontend/lib/auth.ts` | Credentialed fetch calls, with no localStorage token or provider keys |
+| `frontend/app/login/page.tsx:LoginPage()` | Original HaUI form layout, English text, signed-in state and logout |
+
+`lifespan()` creates authentication state from the same backend settings and clears sessions on shutdown. Sessions are in-memory for the agreed single local process; restarting invalidates them. Authentication is not tied to Neo4j or model availability. CORS permits credentialed GET/POST from the two local frontend origins. All unsafe authenticated actions require an explicit CSRF header, including future upload APIs. `/docs` can exercise the cookie flow directly.
+
+Dependencies: `pwdlib[argon2]==0.3.1` and `pyjwt==2.14.0`. Hashing follows the [FastAPI password/JWT guide](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/). Cookies are HTTP-local only in this milestone; public HTTPS and multiple API workers are not supported by this session configuration yet.
+
+Verification: 28 offline backend tests passed; frontend production build and typecheck passed. User administrator setup and live browser login/logout are pending. Step 4 has not started.
+
+Browser verification: the HaUI-derived form fits desktop and 390px mobile widths; password visibility and the missing-setup message work. The back link opens public chat without login. The hung local frontend process was restarted. Live administrator login/logout awaits the user choosing a local password.
+
+
+## Step 4 — Implemented PDF ingestion
+
+This checkpoint supersedes the pending Step 3 notes: the user confirmed administrator authentication is complete and authorized Step 4. The four planned YZU application layers and two remote model roles remain unchanged. Docling's local layout/OCR/table models support PDF extraction; they are not additional conversational agents. No LangGraph workflow, retrieval endpoint, MCP server, or specialist agent is added in this step.
+
+```text
+Authenticated API: api/admin.py -> api/documents.py
+  POST /admin/documents (multipart PDF, CSRF header)
+    services/ingestion.py: IngestionService.ingest()
+      isolated temporary PDF, size/type validation, SHA-256
+      ingestion/pdf.py: extract_pdf() -> Docling Markdown per physical page
+      ingestion/chunking.py: chunk_pages() -> text + heading path + page/index
+      configured Gemini embeddings through GEMINI_BASE_URL (batches of 16)
+      storage/documents.py: prepare_indexes()
+      storage/drive.py: upload_pdf() -> publish_pdf() -> public original URL
+      storage/documents.py: save_document() -> one Neo4j transaction
+  GET /admin/documents/{document_id}
+    get_document() -> source metadata and ordered chunks without vector arrays
+```
+
+Reuse follows HaUI's `create_file()` and heading-based Markdown splitter. The shared temporary Markdown filename and fake page-zero metadata were removed. The 2,500-character size and 500-character overlap are retained; splitting is bounded by physical pages and recognized Markdown headings. Short sections are not merged into unrelated headings. `heading_path` represents extracted Markdown headings, not a guaranteed legal/article hierarchy. Docling can reorder a title or classify article labels as list items. A sentence crossing pages is stored in separate chunks; retrieval quality and context expansion must be assessed in Step 7.
+
+Neo4j uses a separate `YZUDocument -[:HAS_CHUNK]-> YZUChunk` namespace. Documents store UUID, filename, source type/URL, Drive ID, SHA-256, physical page count, chunk count, embedding model/dimensions, UTC creation time, and ready status. Chunks store text, heading path, page number, zero-based index, document/chunk IDs, source URL, and embedding. Unique ID constraints and the cosine `yzu_chunk_embedding` vector index are created explicitly on import, with the dimension checked before upload. Ready documents and all vectors are committed atomically. The supplied model returned 3,072 dimensions. Changing the embedding model requires a later explicit re-embedding/index migration; dimensions alone do not identify a compatible vector space.
+
+`IngestionService` holds one lock for the shared Drive transport and completes in-flight work before removing temporary files if a request is cancelled. It validates embedding counts/dimensions and finite, nonzero vectors. Extraction, embedding, and index setup happen before Drive upload. Public permission is required for success. Database-write failures trigger compensation for that import alone; an uncertain database rollback retains the original rather than leaving stored references broken. Unresolved cleanup and ambiguous upload responses leave safe recovery metadata in ignored `backend/data/failed-imports/`. This local process has no crash-safe queue; a process crash can require manual recovery using the import ID stored in Drive app properties. Repeat uploads intentionally create separate documents.
+
+Runtime additions are locked Docling 2.127.0, langchain-text-splitters 1.1.2, and python-multipart 0.0.32. Extraction runs in a worker thread, uses local cached model assets after first download, and rejects incomplete/no-text conversions. Limits are 20 MiB and 100 pages per PDF. No new secret variables are required. Admin routes keep the Step 3 cookie and CSRF guards; student chat preview remains public.
+
+Verification: 49 offline tests passed, including authenticated upload/inspection, invalid vectors, isolated concurrent paths, source metadata, and failure compensation. The live sample yielded four pages, eleven chunks, and 3,072-dimensional vectors. Neo4j readback, ONLINE index, self-vector lookup, and anonymous original checksum passed. Detailed extraction observations are in `docs/STEP_4_VERIFICATION.md`. Await user acceptance before Step 7.
+
+
+## Cross-page chunking correction
+
+The user requested this ingestion correction before Step 7. It supersedes the Step 4 statement that physical pages are chunk boundaries. `chunk_pages()` now accumulates sections across pages, joins plain-text continuations at page breaks, and splits with paragraph/sentence preference and the existing size/overlap limits. Explicit Markdown headings still delimit sections. Character spans preserve physical source attribution through overlapping splits: `page_numbers` contains every contributing page; `page_number` remains the first. `get_document()` exposes both fields. No extra model or application layer is added.
+
+Regression tests reproduce the original page-2/page-3 sentence split and cover repeated text, overlap, and heading/list boundaries. The scholarship sample's new embeddings and chunks replaced its old chunks in one Neo4j transaction, retaining its document ID and Drive original. This was a targeted repair, not a general replacement endpoint. Docling's title order and imperfect heading labels are unchanged. Very long sentences can still exceed the size cap and require smaller splits; lowercase-continuation detection is deliberately limited to the current English corpus.
+
+## Step 7 — Implemented retrieval and source records
+
+Step 7 is complete and accepted by the user. `storage/search.py` owns parameterized Neo4j vector, Lucene full-text, and neighboring-chunk queries; only ready documents are searchable. `services/retrieval.py` exposes independent semantic and keyword search, combines candidates with reciprocal rank fusion, asks `GEMINI_CHAT_MODEL_2` to return a validated subset/order, and falls back to RRF order on missing configuration, timeouts, provider errors, or invalid IDs. Selected evidence and same-document neighbors retain source URLs and full `page_numbers` provenance within a bounded character budget.
+
+Authenticated FastAPI inspection routes are available at `POST /admin/search/semantic`, `/admin/search/keyword`, and `/admin/search`. Search results are evidence candidates, not answer-confidence judgments; evidence sufficiency, conversational query preparation, and grounded answer generation remain Step 8 responsibilities. Safe Step 7 live-search artifacts are retained under ignored `backend/data/step7/`. The user performs future verification runs from commands supplied by the assistant.
+
+## Step 8 — Implemented six-node LangGraph workflow
+
+The user authorized understand → retrieve → evaluate → reason → answer, with missing evidence routed to clarify → retrieve. `services/chat.py:ChatService` compiles this graph with `Neo4jSaver`. Clarification uses LangGraph `interrupt()` and `Command(resume=...)`, so retrieval resumes only after the student replies. One clarification per question is the initial bound; if evidence remains insufficient, reason/answer return a limitation. Action requests are reported as deferred.
+
+`understand_request()` reads bounded recent completed history and prepares a standalone query. `retrieve_documents()` reuses Step 7. `evaluate_evidence()` checks support; `reason_policy()` produces concise conclusions with conditions and source IDs; `generate_answer()` validates IDs, builds references from stored source metadata, and saves the turn idempotently. ID validation establishes provenance, not factual entailment. Language tasks use existing Gemini model 1; embeddings and reranking retain their Step 7 roles.
+
+`storage/checkpoints.py` implements asynchronous checkpoint lookup, listing, snapshot writes, pending writes, and thread deletion. Neo4j stores typed serialized snapshots under unique keys. `storage/sessions.py` stores completed turns as `YZUChatSession -[:HAS_TURN]-> YZUChatTurn`, assigns a monotonically increasing per-session sequence, and retrieves the newest six exchanges within 12,000 characters. Snapshots include intermediate passages and concise conclusions; snapshots and turns persist until session reset. `ChatService.reset()` removes only the selected session's turn/checkpoint nodes and returns a new UUID.
+
+`connections.py:lifespan()` creates the checkpoint constraints and chat service using managed clients. LangGraph 1.2.11 is pinned. `app.chat_cli` gives the user a local interface for questions, clarification, retry, and disposable-session reset. Local session locks assume one process; Step 9 must enforce browser ownership before exposing session access.
+
+Status: implementation ready for user review. Tests and live workflow verification have not been run by the assistant. Follow `docs/STEP_8_VERIFICATION.md`; frontend/SSE integration remains Step 9.

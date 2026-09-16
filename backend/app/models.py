@@ -3,7 +3,7 @@
 import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from backend.app.config import Settings
+from app.config import Settings
 
 
 def create_models(settings: Settings, http_client: httpx.Client,
@@ -33,3 +33,18 @@ async def check_models(chat: ChatOpenAI, embeddings: OpenAIEmbeddings) -> None:
     vector = await embeddings.aembed_query("YZU connection check")
     if not vector:
         raise RuntimeError("Embedding check returned no vector")
+
+
+
+def create_reranker(settings: Settings, http_client: httpx.Client,
+                    http_async_client: httpx.AsyncClient):
+    """Use model 2 only for reranking; missing configuration enables RRF fallback."""
+    if not (settings.values.get("GEMINI_CHAT_MODEL_2") or "").strip():
+        return None
+    return ChatOpenAI(
+        model=settings.require("GEMINI_CHAT_MODEL_2"),
+        api_key=settings.require("GEMINI_API_KEY"),
+        base_url=settings.require("GEMINI_BASE_URL"),
+        http_client=http_client, http_async_client=http_async_client,
+        streaming=False, use_responses_api=False, timeout=20, max_retries=0,
+    ).bind(response_format={"type": "json_object"})

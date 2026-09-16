@@ -10,7 +10,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
 import google_auth_httplib2
 import httplib2
 import httpx
@@ -139,3 +139,33 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def upload_pdf(service, path: Path, filename: str, folder_id: str,
+               document_id: str) -> str:
+    """Upload an original PDF and return its Drive ID for subsequent cleanup."""
+    result = service.files().create(
+        body={"name": filename, "parents": [folder_id],
+              "appProperties": {"yzu_document_id": document_id}},
+        media_body=MediaFileUpload(str(path), mimetype="application/pdf", resumable=True),
+        fields="id", supportsAllDrives=True,
+    ).execute()
+    return result["id"]
+
+
+def publish_pdf(service, file_id: str) -> str:
+    """Require public-reader permission before returning the original-file link."""
+    service.permissions().create(
+        fileId=file_id, body={"type": "anyone", "role": "reader"},
+        supportsAllDrives=True,
+    ).execute()
+    result = service.files().get(
+        fileId=file_id, fields="webViewLink", supportsAllDrives=True).execute()
+    if not result.get("webViewLink"):
+        raise DriveSetupError("drive_reference_link_missing")
+    return result["webViewLink"]
+
+
+def delete_import_pdf(service, file_id: str) -> None:
+    """Remove only the original uploaded by a failed import."""
+    service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
