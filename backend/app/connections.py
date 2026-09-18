@@ -14,6 +14,7 @@ from app.services.ingestion import IngestionService
 from app.services.retrieval import RetrievalService
 from app.services.chat import ChatService
 from app.services.fallback_tools import FallbackTools
+from app.services.mcp_retrieval import McpRetrievalClient
 from app.storage.checkpoints import Neo4jSaver
 from app.storage.sessions import SessionStore
 from app.storage.drive import DriveSetupError, check_folder, create_service
@@ -85,16 +86,25 @@ async def lifespan(app: FastAPI):
                 settings, app.state.connections["neo4j"],
                 pair[1] if pair else None, reranker)
         app.state.chat = None
+        app.state.mcp_retrieval = None
         if app.state.retrieval is not None and "gemini" in app.state.connections:
             try:
+                app.state.mcp_retrieval = McpRetrievalClient(
+                    settings.require("MCP_RETRIEVAL_URL"))
+                async with asyncio.timeout(10):
+                    await app.state.mcp_retrieval.check()
+                app.state.readiness["mcp"] = {"status": "ready"}
+                print("MCP connected")
                 saver = Neo4jSaver(app.state.connections["neo4j"],
                                   settings.require("NEO4J_DATABASE"))
                 await saver.setup()
                 app.state.chat = ChatService(
-                    app.state.connections["gemini"][0], app.state.retrieval,
+                    app.state.connections["gemini"][0], app.state.mcp_retrieval,
                     SessionStore(saver), saver, fallback_tools=fallback_tools)
                 app.state.readiness["chat"] = {"status": "ready"}
             except Exception:
+                if "mcp" not in app.state.readiness:
+                    app.state.readiness["mcp"] = {"status": "connection_failed"}
                 app.state.readiness["chat"] = {"status": "connection_failed"}
         try:
             yield

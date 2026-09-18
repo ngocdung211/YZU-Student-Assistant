@@ -19,7 +19,7 @@ class QueryRewrite(BaseModel):
 
 
 class AnswerDraft(BaseModel):
-    """Citations are source IDs; the application supplies their real URLs."""
+    """Source IDs select separate references; they do not appear in the answer."""
 
     model_config = ConfigDict(extra="forbid")
     answer: str = Field(min_length=1, max_length=12000)
@@ -160,8 +160,10 @@ class ChatService:
                 AnswerDraft,
                 "Answer only from the supplied sources. Preserve qualifications, dates, "
                 "exceptions, and unresolved conflicts. Never claim a complete catalog "
-                "without evidence. Cite every factual conclusion using source_ids only; "
-                "do not generate URLs. Mark action_required when the student asks the "
+                "without evidence. Select supporting source_ids only in the source_ids "
+                "JSON field. Do not put citations, source IDs, bracketed source markers, "
+                "URLs, or a reference list in the answer text; the application renders "
+                "references separately. Mark action_required when the student asks the "
                 "application to perform an action, but never claim to execute it.",
                 {"question": state["question"], "rewritten_query": state["query"],
                  "sources": sources})
@@ -175,8 +177,7 @@ class ChatService:
             draft = AnswerDraft(
                 answer=(
                     "I could not find enough information in the indexed YZU "
-                    "documents or the available fallback sources to answer this "
-                    "question."
+                    "documents."
                 ),
                 source_ids=[])
 

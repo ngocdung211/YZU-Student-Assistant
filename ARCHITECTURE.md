@@ -364,3 +364,26 @@ Web fallback sends at most one billable Gemini native Google Search grounding re
 `connections.py:lifespan()` creates the checkpoint constraints, fallback tools, and chat service using managed clients. LangGraph 1.2.11 is pinned. `app.chat_cli` gives the user a local interface for questions, retry, and disposable-session reset. Local session locks assume one process; Step 9 must enforce browser ownership before exposing session access.
 
 Status: the revised implementation passed 18 focused tests and 66 broader backend tests excluding an unrelated stale PDF-ingestion import. Live document-first answering, contextual follow-up, and session reset passed. Gemini returned HTTP 429 during the live web-fallback probe; the graph correctly returned an evidence limitation. The user accepted Step 8 on 2026-09-15 and authorized frontend/SSE integration in Step 9.
+
+## MCP client–server retrieval boundary
+
+The public conversation API is the MCP client application. It owns browser
+sessions, conversation history, the fixed `rewrite_query → retrieve → answer`
+LangGraph workflow, and grounded answer generation. Its retrieve node depends on
+`McpRetrievalClient`, which calls `yzu_search_documents` over MCP Streamable HTTP
+at the configured `MCP_RETRIEVAL_URL`.
+
+`app.mcp_server` is a separately started FastMCP process. Its lifespan owns its
+Neo4j driver, Gemini embedding client, optional model-2 reranker, and the existing
+`RetrievalService`. The single read-only tool performs semantic and keyword
+search, reciprocal-rank fusion, optional reranking, and adjacent-chunk expansion.
+It returns the existing validated `CombinedSearchResponse`; it does not store
+conversation state or generate the final answer. Gemini credentials remain only
+in server-side environment configuration and are never MCP tool arguments.
+
+Local deployment uses three processes: FastMCP on `127.0.0.1:8001`, the FastAPI
+conversation client on `127.0.0.1:8000`, and the frontend on `127.0.0.1:3000`.
+The client checks the MCP server during startup; if it is unavailable, `/ready`
+reports `mcp` and `chat` as failed and public chat remains unavailable. Existing
+authenticated `/admin/search` endpoints continue to call the local retrieval
+service directly as diagnostic interfaces; student chat always crosses MCP.

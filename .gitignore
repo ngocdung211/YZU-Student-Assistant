@@ -33,3 +33,6 @@ coverage/
 # Local document content
 uploads/
 data/
+docs/
+/IMPLEMENTATION_PLAN.md
+/backend/app/utils/regulation_upload_progress.json

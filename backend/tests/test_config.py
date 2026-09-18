@@ -16,11 +16,13 @@ def configured_settings() -> Settings:
         "GEMINI_API_KEY": "test-secret-key",
         "GEMINI_BASE_URL": "https://gemini.example.invalid/v1beta/openai/",
         "GEMINI_CHAT_MODEL_1": "test-chat-model",
+        "GEMINI_CHAT_MODEL_2": "test-rerank-model",
         "GEMINI_EMBEDDING_MODEL": "test-embedding-model",
         "NEO4J_URI": "bolt://example.invalid:7687",
         "NEO4J_USERNAME": "test-user",
         "NEO4J_PASSWORD": "test-secret-password",
         "NEO4J_DATABASE": "neo4j",
+        "MCP_RETRIEVAL_URL": "http://127.0.0.1:8001/mcp",
     })
 
 
@@ -94,9 +96,14 @@ def test_successful_connections_still_require_drive(monkeypatch):
     monkeypatch.setattr(connections, "check_database", AsyncMock())
     monkeypatch.setattr(connections, "create_models", lambda *args: (object(), object()))
     monkeypatch.setattr(connections, "check_models", AsyncMock())
+    mcp_client = MagicMock(check=AsyncMock())
+    monkeypatch.setattr(
+        connections, "McpRetrievalClient", lambda endpoint: mcp_client)
     with TestClient(app) as client:
         services = client.get("/ready").json()["services"]
         assert services["neo4j"]["status"] == "ready"
         assert services["gemini"]["status"] == "ready"
         assert services["drive"]["status"] == "not_configured"
+        assert services["mcp"]["status"] == "ready"
         assert client.get("/ready").status_code == 503
+    mcp_client.check.assert_awaited_once()

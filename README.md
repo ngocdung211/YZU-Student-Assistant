@@ -1,211 +1,248 @@
 # YZU Student Assistant
 
-An English information assistant for YZU students. **Steps 1 and 2 are approved; Step 3 administrator login is implemented.** The HaUI-derived interface remains a preview. Gemini and Neo4j live checks pass. Personal Google Drive OAuth and public-link verification passed. Chat and document uploads arrive in later approved steps.
+An English retrieval-augmented assistant for Yuan Ze University students. The
+application answers questions from indexed YZU documents, preserves conversation
+history, and returns links to the original sources.
+
+The project runs locally as three processes:
+
+```text
+Next.js frontend :3000
+        |
+        | HTTP + Server-Sent Events
+        v
+FastAPI conversation API :8000
+        |
+        | MCP Streamable HTTP
+        v
+FastMCP retrieval server :8001
+        |
+        +-- Gemini chat, embeddings and optional reranking
+        +-- Neo4j document vectors, metadata and conversation history
+        +-- Google Drive public links for original PDFs
+```
+
+## Features
+
+- Public student chat without student accounts.
+- Signed anonymous conversation cookies and persistent Neo4j history.
+- Three-node LangGraph workflow: query rewrite, retrieval and grounded answer.
+- Hybrid semantic and keyword retrieval through a read-only MCP tool.
+- Reciprocal-rank fusion, optional Gemini reranking and neighboring context.
+- Markdown answers with separately validated source references.
+- One configured administrator for PDF upload and source inspection.
+- Local PDF extraction with Docling and heading-aware, page-aware chunking.
+- Public Google Drive references to the original uploaded documents.
+
+The repository does not include API keys, OAuth tokens, database credentials,
+administrator passwords, indexed Neo4j data or the local source-document corpus.
 
 ## Requirements
 
-- Node.js 20.9+ and npm (verified locally with Node 20.17.0 and npm 10.8.2).
-- Python 3.13 and pip (verified locally with Python 3.13.5).
-- No API keys, `.env`, database, or Google Drive credentials are required for Step 1.
+- Python 3.13
+- Node.js 20.9 or newer and npm
+- A reachable Neo4j database
+- Gemini API access through its OpenAI-compatible endpoint
+- A Google OAuth client and a writable Google Drive folder
 
-## Install
+## Installation
 
-Backend:
+Clone the repository and open its root directory.
+
+Create the backend environment:
 
 ```sh
-cd "/Users/admin/Working/2026-S2/YZU Student Assistant/backend"
+cd backend
 python3.13 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-Frontend:
+Install the frontend dependencies:
 
 ```sh
-cd "/Users/admin/Working/2026-S2/YZU Student Assistant/frontend"
+cd ../frontend
 npm ci
 ```
 
-Keep `requirements.txt` and `package-lock.json` in version control for reproducible installs.
+## Backend configuration
 
-## Run locally
-
-Start the backend in one terminal:
+Create the local environment file:
 
 ```sh
-cd "/Users/admin/Working/2026-S2/YZU Student Assistant/backend"
-.venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+cd ../backend
+cp .env.example .env
 ```
 
-Start the frontend in a second terminal:
+Configure these values in `backend/.env`:
+
+| Variable | Purpose |
+|---|---|
+| `GEMINI_API_KEY` | Gemini credential used only by backend processes |
+| `GEMINI_BASE_URL` | Gemini OpenAI-compatible base URL |
+| `GEMINI_CHAT_MODEL_1` | Query rewriting and grounded answer model |
+| `GEMINI_CHAT_MODEL_2` | Optional reranking model; failures fall back to RRF order |
+| `GEMINI_EMBEDDING_MODEL` | Document and query embedding model |
+| `NEO4J_URI` | Neo4j connection URI |
+| `NEO4J_USERNAME` | Neo4j username |
+| `NEO4J_PASSWORD` | Neo4j password |
+| `NEO4J_DATABASE` | Neo4j database name, normally `neo4j` |
+| `GOOGLE_DRIVE_FOLDER_ID` | Writable destination folder for original PDFs |
+| `GOOGLE_DRIVE_CREDENTIALS_JSON` | Path to the local OAuth client JSON |
+| `GOOGLE_DRIVE_TOKEN_FILE` | Local OAuth token path |
+| `ADMIN_USERNAME` | Username for the single administrator |
+| `MCP_RETRIEVAL_URL` | Retrieval endpoint, normally `http://127.0.0.1:8001/mcp` |
+
+Do not place secrets in `frontend/.env.local` or in variables prefixed with
+`NEXT_PUBLIC_`.
+
+### Create the administrator password
+
+Set `ADMIN_USERNAME` in `backend/.env`, then run:
 
 ```sh
-cd "/Users/admin/Working/2026-S2/YZU Student Assistant/frontend"
-npm run dev
-```
-
-- Frontend: <http://localhost:3000>
-- API liveness: <http://localhost:8000/health> — expected `{"status":"ok"}`
-- Interactive API documentation: <http://localhost:8000/docs>
-
-Both processes listen only on the local machine. Stop each with **Ctrl+C** in its terminal. If a port is occupied, stop your earlier instance or deliberately select another port; do not terminate unrelated processes.
-
-## Verify Step 1
-
-```sh
-curl --fail http://localhost:8000/health
-```
-
-From `frontend/`, run `npm run build` and `npm run typecheck`. The HaUI-style chat preview should render at desktop and mobile widths and explicitly say chat is not available yet. FAQ buttons fill the input; the Send button stays disabled until chat is implemented. The sidebar switches to a drawer below the original desktop breakpoint. The moon/sun button toggles the original theme. It is not connected to the API yet.
-
-For a production-mode local frontend check, stop the development server, run `npm run build`, then `npm start`.
-
-## Structure
-
-- `frontend/app/layout.tsx`: `RootLayout()` defines English HTML, metadata, and shared styles.
-- `frontend/app/page.tsx`: `Chat()` renders the adapted HaUI chat shell, greeting, and inactive composer.
-- `backend/app/main.py`: creates the FastAPI app and registers routes.
-- `backend/app/api/health.py`: `get_health()` reports process liveness without querying external services.
-- `AGENTS.md`: project rules and mandatory step-by-step user checkpoints.
-- `ARCHITECTURE.md`: source review, planned structure, and implementation status.
-- `IMPLEMENTATION_PLAN.md`: agreed order and acceptance checks.
-
-Configuration and credentials are being implemented in Step 2. Store future local secrets in ignored `.env` files and credential files in an ignored `credentials/` directory. Commit only placeholder `.env.example` files. Selected HaUI frontend theme files, assets, and layout code are reused. No credentials or backend configuration were copied.
-
-The frontend uses the original Chakra UI 2.10.7 theme, primary-button variant, Plus Jakarta Sans font, FAQ sidebar, floating toolbar, message bubble, and rounded input styling. `AppWrappers()` provides the Chakra theme; `SidebarContent()` and `Navbar()` adapt the corresponding source components. The source font stylesheet loads from Google Fonts, as in HaUI-library.
-
-The sidebar, assistant avatar, and faded chat background use the YZU logo supplied by the user, stored unchanged at `frontend/public/img/logo/yzu-logo.png`. Its circular proportions are preserved. The Horizon UI license from the source is preserved in `frontend/LICENSE`. Do not introduce a new visual design or implementation approach without discussing it with the user first.
-
-## Step 2 configuration and review
-
-Keep secrets in ignored `backend/.env`. On a fresh checkout, copy `backend/.env.example` to it. Existing local values are never overwritten. The user selected Gemini through the OpenAI-compatible endpoint and personal Google Drive OAuth.
-
-| Variables | Purpose |
-| --- | --- |
-| `GEMINI_API_KEY` | Server-side Gemini credential |
-| `GEMINI_BASE_URL` | User-configured OpenAI-compatible Gemini endpoint, passed to both LangChain clients |
-| `GEMINI_CHAT_MODEL_1` | Active chat model ID |
-| `GEMINI_EMBEDDING_MODEL` | Embedding model ID |
-| `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` | Existing Neo4j connection |
-| `NEO4J_DATABASE` | Database name, default `neo4j` |
-| `GOOGLE_DRIVE_FOLDER_ID` | Existing destination folder |
-| `GOOGLE_DRIVE_CREDENTIALS_JSON` | Path to downloaded OAuth client JSON, absolute or relative to `backend/` |
-| `GOOGLE_DRIVE_TOKEN_FILE` | Optional token path, default `credentials/token.json` |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `AUTH_SECRET` | Administrator login configuration |
-
-`GEMINI_CHAT_MODEL_2` is not used in this step. Older blank `OPENAI_*` variables are ignored; no fallback sends Gemini credentials to OpenAI. `load_settings()` preserves literal dollar signs and gives process environment values precedence. The optional frontend `.env` contains only `NEXT_PUBLIC_API_URL`, default `http://localhost:8000`; the chat preview is not connected yet.
-
-`create_models()` retains HaUI's `ChatOpenAI` / `OpenAIEmbeddings`, sets `base_url` for both, selects Chat Completions, and sends raw embedding text with `check_embedding_ctx_length=False`. See [Gemini OpenAI compatibility](https://ai.google.dev/gemini-api/docs/openai).
-
-### Personal Drive authorization
-
-The user approved full Drive OAuth scope to use the existing folder. The credential currently provided is a Web OAuth client. In Google Cloud, enable Drive API, configure the consent screen/test user as needed, and register this exact Authorized redirect URI for that client:
-
-```text
-http://localhost:8080/
-```
-
-From `backend/`, run:
-
-```sh
-.venv/bin/python -m app.storage.drive --authorize --check-public
-```
-
-Complete Google consent in the browser within three minutes. Authorization is explicit and never opens automatically on API startup. Tokens are stored in the ignored token file with owner-only permissions. Subsequent checks refresh expired access tokens when possible. Do not commit the OAuth JSON or token file.
-
-The command checks destination-folder access, creates `yzu-connection-check.txt`, grants public reader access, reads its exact contents without OAuth, and deletes only that newly created probe. No existing documents are changed. A failed command prints only a safe status or exception class. Retry `--authorize` after correcting OAuth configuration or revoked/expired refresh tokens. Once authorized, repeat the probe without another login using:
-
-```sh
-.venv/bin/python -m app.storage.drive --check-public
-```
-
-### Startup and verification
-
-Restart the backend after configuration changes or completing OAuth. Every startup with complete Gemini configuration makes one short chat and embedding request; these use API quota, including development reloads. `/ready` reads cached startup results without additional provider calls. It is a startup snapshot, not continuous monitoring.
-
-- `/health`: HTTP 200 when the process is alive.
-- `/ready`: HTTP 200 when all dependency checks pass; otherwise HTTP 503 with safe per-service status. Drive folder readiness does not by itself prove public sharing; the explicit probe above is the acceptance check.
-- `oauth_authorization_required`: complete the browser consent command.
-- `invalid_drive_folder` / `drive_folder_not_writable`: correct the folder selection or account access.
-- `connection_failed`: check local credentials/provider availability; provider exception bodies are not exposed.
-
-Run offline tests from `backend/`:
-
-```sh
-.venv/bin/python -m pytest -q
-```
-
-Current result: 13 passing tests, including Gemini request routing/raw embedding text, missing settings, error redaction, lifecycle cleanup, private token permissions, folder validation, and probe cleanup. One Starlette/AnyIO dependency deprecation warning remains. Real Neo4j, Gemini chat, and Gemini embeddings checks passed. Google OAuth and a real public-link probe passed; the temporary probe was deleted. Step 2 is verified and awaiting user approval. Step 3 has not started. All changes remain local; the user manages publishing.
-
-Final checkpoint: the running API returned HTTP 200 from `/ready` with Neo4j, Gemini and Drive ready. One earlier Gemini startup check failed; isolated chat/embedding checks and the final startup passed. The import paths in `app/models.py` and `tests/test_drive.py` were corrected to support the documented backend working directory. The OAuth client JSON is outside this repository and untracked; the token is inside the repository, ignored and untracked. No Git exclusion change was needed.
-
-## Step 3 — Administrator login
-
-The HaUI login layout is adapted at <http://localhost:3000/login>. The public student chat preview remains at `/` and requires no login. The successful login view shows the administrator session, an API documentation link, and logout; document-management screens are still deferred.
-
-Your `ADMIN_USERNAME` is read from `backend/.env`. Configure a password without putting it in shell history or chat:
-
-```sh
-cd "/Users/admin/Working/2026-S2/YZU Student Assistant/backend"
 .venv/bin/python -m app.auth --set-password
 ```
 
-Enter and confirm a password of 12–1024 characters. The helper saves an Argon2 hash in `ADMIN_PASSWORD_HASH`. If `AUTH_SECRET` is empty or shorter than 32 characters, this explicit command replaces it with a random signing secret. Neither value is printed. The `.env` file is kept owner-readable/writable. Process environment overrides still apply; remove stale overrides if a changed file is not taking effect.
+Enter a new password when prompted. The command stores only an Argon2 hash in
+`ADMIN_PASSWORD_HASH` and creates a random `AUTH_SECRET` when one is not already
+configured. Restart the API after changing the password.
 
-Restart the backend after configuration, then open `/login`. Test your credentials, reload the page to confirm the cookie session, click **Log out**, and check that <http://localhost:8000/admin/session> returns HTTP 401. Wrong credentials return HTTP 401; missing or invalid administrator setup returns HTTP 503. Existing `/health` and `/ready` retain their Step 2 meanings; provider readiness is not administrator configuration readiness.
+Every person who clones the repository must perform this step with their own
+local `backend/.env`. Administrator credentials are intentionally not shared
+through Git.
 
-### Local session contract
+### Authorize Google Drive
 
-- `POST /auth/token`: JSON `username`/`password`, returns identity/expiry and sets an HttpOnly, SameSite=Lax cookie. It never returns the token in JSON or stores it in browser localStorage.
-- `GET /admin/session`: protected identity/expiry check; HTTP 401 without a valid session.
-- `POST /auth/logout`: revokes the current session and deletes the cookie; copied cookies from that session are rejected afterward.
-- Mutating authentication/management requests require `X-CSRF-Protection: 1`. Browser origins are restricted to the approved local frontend/API addresses. The frontend supplies the header automatically. FastAPI `/docs` exposes this header for testing: enter `1` when executing login/logout or future management actions.
-- Sessions expire after one hour. Active session IDs live in the single backend process; restart/reload logs every administrator session out. The signed JWT follows HaUI's approach with explicit server-side revocation added for logout.
-- `app/api/admin.py:router` applies `require_admin()` at router level. Future document-management routes must use this guard; client-side checks do not grant access. PDF upload and inspection now use this same guard (see Step 4 below).
+Store the OAuth client JSON outside version control and set its path in
+`GOOGLE_DRIVE_CREDENTIALS_JSON`. Then run:
 
-Use the same hostname for frontend/API (`localhost` for both, or configure `127.0.0.1` for both). Cookies intentionally have `Secure=False` for this HTTP localhost milestone. Multi-worker or public HTTPS deployment requires a shared session store and reviewed cookie/origin configuration; it is outside this local step.
+```sh
+.venv/bin/python -m app.storage.drive --authorize
+.venv/bin/python -m app.storage.drive --check-public
+```
 
-Verification: 28 backend tests pass, including login, invalid credentials, expiration, token tampering, logout replay, protected management mutations, missing configuration, and CSRF/CORS behavior. Production frontend build and TypeScript checks pass. The login form retains HaUI's spacing, input/password toggle, blue submit button and back button. User password setup and live browser login/logout remain the final review check. No remote repository actions were performed.
+The first command opens the local Google consent flow. The second creates,
+publicly reads and deletes a small probe file to verify that student source links
+will work. OAuth tokens are stored locally under the configured token path.
 
-Browser verification: the HaUI-derived form fits desktop and 390px mobile widths; password visibility and the missing-setup message work. The back link opens public chat without login. The hung local frontend process was restarted. Live administrator login/logout awaits the user choosing a local password.
+## Frontend configuration
 
+The default API address is `http://127.0.0.1:8000`. To override it:
 
-## Step 4 — PDF import (ready for review)
+```sh
+cd ../frontend
+cp .env.example .env.local
+```
 
-The user has confirmed Step 3 authentication is complete. PDF import now reuses HaUI's Docling/Markdown pipeline, followed by explicit Gemini embeddings, public Drive upload, and atomic Neo4j storage. The frontend design is unchanged. Retrieval and chat are the next approved-order steps, not yet implemented.
+Use the same hostname consistently. Do not mix `localhost` and `127.0.0.1`,
+because browser cookies are scoped to the hostname.
 
-From `backend/`, install the updated dependencies with `.venv/bin/python -m pip install -r requirements.txt`, then start or restart the API using the existing startup command. Docling downloads its local PDF/OCR model files on first conversion; that first run can take several minutes. Subsequent conversions use cached assets. PDF import is synchronous and the request waits for the result; this version has no progress UI or durable background job queue.
+## Running locally
 
-### Inspect the imported scholarship sample
+Start the MCP retrieval server from `backend/`:
 
-1. Log in yourself at <http://localhost:3000/login>. Use the same `localhost` hostname for the API. A backend restart clears the previous session.
-2. Open <http://localhost:8000/docs> and expand `GET /admin/documents/{document_id}`.
-3. Choose **Try it out**, enter `7289437e-be9a-49b8-82df-110fa9439676`, and execute. Expect HTTP 200 with document metadata and 11 chunks, including actual pages 1–4, heading metadata, and embedding dimensions. Vector arrays are intentionally omitted.
-4. Open the returned `source_url` in a private/signed-out browser. It should display the complete original PDF.
+```sh
+.venv/bin/python -m app.mcp_server --host 127.0.0.1 --port 8001
+```
 
-The sample is already stored; you do not need to upload it again. Local readback is saved in `backend/data/step4/stored-chunks.json` (ignored by Git). See `docs/STEP_4_VERIFICATION.md` for the full check and known extraction limitations.
+Start the FastAPI conversation API in a second terminal:
 
-### Upload a PDF yourself
+```sh
+cd backend
+.venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-In `/docs`, expand `POST /admin/documents`, choose **Try it out**, set `x-csrf-protection` to `1`, choose a PDF, and execute. Your existing administrator cookie is sent by the browser; do not paste credentials into code. Expect HTTP 201 with `status: ready`, `document_id`, `page_count`, `chunk_count`, and `source_url`. Use the returned ID with the inspection endpoint.
+Start the frontend in a third terminal:
 
-Uploads accept `.pdf` files up to 20 MiB and 100 pages. Each upload uses a separate temporary directory and is processed one at a time in the local API process. Long Markdown sections use a 2,500-character limit and up to 500-character overlap within a heading section, including across physical pages. Each chunk stores `page_numbers` for all contributing pages and keeps `page_number` as the first page; heading recognition is only as accurate as Docling's output. The configured `GEMINI_EMBEDDING_MODEL` is called through `GEMINI_BASE_URL`. Each import uses embedding quota and Drive storage. Uploading the same PDF again creates a new document and Drive file; replacement/deduplication is deferred.
+```sh
+cd frontend
+npm run dev
+```
 
-Failures return a safe stage and message: invalid/unreadable PDF (422), file too large (413), unavailable clients (503), or embedding/Drive/Neo4j failure (502). Unauthenticated access is 401; a missing CSRF header is 403. A failed import attempts to remove only its own new records and Drive file. If `cleanup_required` is true, inspect the matching ignored `backend/data/failed-imports/<document_id>.json` before retrying. It records IDs and the failed stage, not credentials. An uncertain Drive upload can be located using its `yzu_document_id` app property. There is no automated recovery UI yet.
+Open:
 
-Verification: **49 backend tests passed**; the supplied 4-page PDF was imported using the real configured services. Eleven 3,072-dimensional vectors were read back, the Neo4j index is ONLINE, a self-vector lookup matched the source, and an anonymous download matched the original SHA-256. One Starlette/AnyIO dependency deprecation warning remains. All work is local; no push was performed. Stop for Step 4 review before Step 7.
+- Student chat: <http://127.0.0.1:3000>
+- Administrator login: <http://127.0.0.1:3000/login>
+- API documentation: <http://127.0.0.1:8000/docs>
+- Liveness check: <http://127.0.0.1:8000/health>
+- Dependency readiness: <http://127.0.0.1:8000/ready>
 
+Stop each process with `Ctrl+C`.
 
-### Cross-page sentence correction
+## Adding PDF sources
 
-The chunker no longer flushes at every physical page break. It joins plain-text continuations, preserves explicit heading/list boundaries, and prefers paragraph/sentence boundaries before falling back to smaller splits under the 2,500-character cap. Source character spans map each chunk to `page_numbers`; `page_number` remains its first page for compatibility. An oversized sentence may still need splitting to respect the size limit.
+1. Sign in at `/login` with the locally configured administrator account.
+2. Open the API documentation at `http://127.0.0.1:8000/docs`.
+3. Use `POST /admin/documents` and set `X-CSRF-Protection` to `1`.
+4. Upload a PDF of no more than 20 MiB and 100 pages.
+5. Inspect the returned document with `GET /admin/documents/{document_id}`.
+6. Open its `source_url` in a signed-out browser to confirm public access.
 
-The existing scholarship sample was re-embedded and its chunks replaced atomically under the same document ID and Drive URL. The complete sentence “The review standard may be increased by colleges based on the nature of the field.” is now present in a chunk attributed to pages `[2, 3]`. The sample still has 11 chunks. See `backend/data/step4/stored-chunks.json` for current readback. This correction does not repair Docling's separate heading/reading-order limitations.
+Import performs extraction, chunking, embedding, Drive publication and atomic
+Neo4j storage before reporting the document as ready. Failed imports attempt to
+remove their own partially created records and Drive file.
 
-Step 7 is complete and accepted. Authenticated inspection endpoints expose independent semantic and keyword searches plus combined RRF fusion, optional `GEMINI_CHAT_MODEL_2` reranking with safe fallback, and bounded neighboring context. Safe live-search evidence is retained under ignored `backend/data/step7/`.
+## Verification
 
-## Step 8 — Simplified LangGraph agent
+Run the backend suite:
 
-The workflow is `rewrite_query → retrieve → answer`, with persistent Neo4j checkpoints/history. Document retrieval is always attempted first. If it returns no passages, the answer node may try a billable Gemini search restricted to official YZU sites and a maintained Global Affairs contact. From `backend/`, run `.venv/bin/python -m app.chat_cli` to start a disposable local conversation. Restart with `--session YOUR_SESSION_UUID` to continue it. `/retry` resumes failed work; `/reset` permanently deletes that session's history/checkpoints; `/quit` exits.
+```sh
+cd backend
+.venv/bin/python -m pytest -p no:cacheprovider -q
+```
 
-Follow [Step 8 verification](docs/STEP_8_VERIFICATION.md) for exact offline and live checks. Public browser chat, session ownership controls, and SSE follow in Step 9.
+Run the frontend checks:
+
+```sh
+cd frontend
+npm test
+npm run typecheck
+npm run build
+```
+
+At the latest local verification, all 99 backend tests and all 5 frontend tests
+passed. TypeScript checking and the Next.js production build also passed. The
+backend suite emits one dependency deprecation warning from Starlette/AnyIO.
+
+## Project structure
+
+```text
+backend/app/api/          FastAPI routes
+backend/app/services/     ingestion, retrieval and conversation services
+backend/app/storage/      Neo4j, Drive, checkpoint and session adapters
+backend/app/mcp_server.py independent read-only retrieval server
+backend/tests/            backend unit and integration tests
+frontend/app/             Next.js routes and providers
+frontend/components/      chat, navigation and reference UI
+frontend/hooks/           browser conversation state
+frontend/lib/             API and SSE clients
+frontend/tests/           frontend rendering and stream tests
+ARCHITECTURE.md            detailed architecture and data flow
+SYSTEM_PRESENTATION.md    concise presentation source
+```
+
+## Current limitations
+
+- Local Mac-oriented deployment; production hosting is not configured.
+- English interface, sources and answers only.
+- PDF upload is available; HTML ingestion and a full document-management UI are
+  not implemented.
+- Administrator sessions are in-memory and intended for one local API process.
+- PDF extraction quality depends on the structure Docling can recover from each
+  source document.
+- Model and provider requests can fail because of quota, credentials or network
+  availability.
+
+## Security and source handling
+
+- Never commit `.env`, OAuth JSON, tokens, private keys or local import progress.
+- Rotate any credential that has previously appeared in source control.
+- Student chat receives source text as untrusted evidence, not executable
+  instructions.
+- Source URLs returned to students come from stored metadata rather than model
+  generated links.
+
+The frontend visual style adapts material from the HaUI reference project and
+Horizon UI. The retained MIT license is available at `frontend/LICENSE`. The YZU
+logo is supplied for this project.

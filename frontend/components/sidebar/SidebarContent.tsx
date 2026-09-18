@@ -4,6 +4,7 @@ import { Fragment } from 'react';
 import { Box, Button, Divider, Flex, Heading, VStack, useColorModeValue } from '@chakra-ui/react';
 
 const questions = [
+  'Where can I find YZU university policies?',
   'What scholarships are available to YZU students?',
   'What are the scholarship application requirements?',
   'Where can I find a list of courses?',

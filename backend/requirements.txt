@@ -1,4 +1,5 @@
 docling==2.127.0
+fastmcp==4.0.4
 fastapi==0.141.1
 google-api-python-client==2.200.0
 google-auth-httplib2==0.4.2

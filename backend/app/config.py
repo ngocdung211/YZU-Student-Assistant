@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 BACKEND_DIRECTORY = Path(__file__).resolve().parents[1]
+DEFAULT_MCP_RETRIEVAL_URL = "http://127.0.0.1:8001/mcp"
 REQUIRED_SETTINGS = {
     "gemini": ("GEMINI_API_KEY", "GEMINI_BASE_URL", "GEMINI_CHAT_MODEL_1",
                "GEMINI_EMBEDDING_MODEL"),
@@ -37,7 +38,10 @@ class Settings:
 def load_settings(env_file: Path = BACKEND_DIRECTORY / ".env") -> Settings:
     """Load the backend file; explicit process variables take precedence."""
     # Disable interpolation so literal dollar signs in passwords are preserved.
-    values = {"NEO4J_DATABASE": "neo4j"}
+    values = {
+        "MCP_RETRIEVAL_URL": DEFAULT_MCP_RETRIEVAL_URL,
+        "NEO4J_DATABASE": "neo4j",
+    }
     values.update(dotenv_values(env_file, interpolate=False))
     values.update(os.environ)
     return Settings(values)

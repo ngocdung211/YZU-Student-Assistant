@@ -1,3 +1,4 @@
+from getpass import getpass
 import json
 import tempfile
 from pathlib import Path
@@ -54,7 +55,7 @@ def login(username: str, password: str) -> requests.Session:
 def get_pdf_links() -> list[dict]:
     """Extract regulation titles and PDF URLs from the YZU page."""
 
-    response = requests.get(REGULATIONS_URL, timeout=30, verify=False)
+    response = requests.get(REGULATIONS_URL, timeout=30)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -145,7 +146,6 @@ def upload_regulations(
             pdf_response = requests.get(
                 url,
                 timeout=60,
-                verify=False
             )
             pdf_response.raise_for_status()
 
@@ -231,8 +231,8 @@ def upload_regulations(
 
 if __name__ == "__main__":
     session = login(
-        username="admin",
-        password="123456123456",
+        username=input("Administrator username: ").strip(),
+        password=getpass("Administrator password: "),
     )
 
     upload_regulations(
